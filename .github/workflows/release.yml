@@ -88,5 +88,10 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
           else
-            gh release create "$TAG" dist/* --title "Spectra ${TAG#v}" --generate-notes
+            NOTES=".github/release-notes/$TAG.md"
+            if [ -f "$NOTES" ]; then
+              gh release create "$TAG" dist/* --title "Spectra ${TAG#v}" --notes-file "$NOTES" --latest
+            else
+              gh release create "$TAG" dist/* --title "Spectra ${TAG#v}" --generate-notes --latest
+            fi
           fi

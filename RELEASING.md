@@ -39,7 +39,8 @@ Store the keystore file and the password in a password manager (for example as a
    git tag -a v1.0.1 -m "Spectra 1.0.1"
    git push origin v1.0.1
    ```
-5. The **Release** workflow builds the APK with `VERSION_NAME` from the tag (`1.0.1` → versionCode `10001`), signs it, verifies the certificate, and publishes `Spectra.apk`, `Spectra-1.0.1.apk`, `SHA256SUMS.txt` and `signing-certificate.txt` with generated notes. Edit the notes on GitHub if you like.
+5. Optional: write the release notes in `.github/release-notes/v1.0.1.md` before tagging; otherwise GitHub generates them.
+6. The **Release** workflow builds the APK with `VERSION_NAME` from the tag (`1.0.1` → versionCode `10001`), signs it, verifies the certificate, and publishes `Spectra.apk`, `Spectra-1.0.1.apk`, `SHA256SUMS.txt` and `signing-certificate.txt` with generated notes. Edit the notes on GitHub if you like.
 
 To rebuild an existing tag, run the **Release** workflow manually and enter the tag.
 

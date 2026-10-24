@@ -78,7 +78,7 @@ tasks.named("preBuild") { dependsOn(copyWebApp) }
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-ktx:1.9.3")
-    implementation("androidx.webkit:webkit:1.12.1")
+    implementation("androidx.webkit:webkit:1.18.0")
     // Google's barcode scanner UI (runs through Google Play services), used as a fallback.
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     // The main scanner: CameraX preview + ML Kit barcode model bundled in the app (works offline).

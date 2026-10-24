@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spectra — every nutrient, label first</title>
+<meta name="description" content="Spectra is a free Android food diary that tracks every nutrient: label values first, then manufacturer spec sheets, USDA lab data and clearly marked estimates. Private by design.">
+<meta name="theme-color" content="#121513">
+<meta property="og:title" content="Spectra — every nutrient, label first">
+<meta property="og:description" content="A private Android food diary that tracks 90+ nutrients, shows where every number comes from, and tells you what to change.">
+<meta property="og:image" content="https://m0n0t0ne0ne.github.io/spectra/screenshots/08-insights.png">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'none'; object-src 'none'; base-uri 'none'">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<style>
+@font-face{font-family:Manrope;font-style:normal;font-weight:200 800;font-display:swap;src:url(assets/manrope-latin.woff2) format('woff2')}
+:root{
+  --bg:#121513;--card:#1A1F1C;--fill:#222824;--fill-2:#2C332F;--line:#2A302C;
+  --text:#E8ECE9;--text-2:#A3ABA6;--text-3:#8A938D;
+  --mint:#8FD3B6;--sky:#9DB4F2;--wheat:#F2C28F;--rose:#F29B8F;--on-mint:#12201A;
+  --mint-t:rgba(143,211,182,.14);--sky-t:rgba(157,180,242,.16);--wheat-t:rgba(242,194,143,.16);--rose-t:rgba(242,155,143,.16);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Manrope,system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:var(--mint)}
+img{max-width:100%;height:auto;display:block}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+.skip{position:absolute;left:-999px}.skip:focus{left:12px;top:12px;background:var(--mint);color:var(--on-mint);padding:8px 12px;border-radius:10px;z-index:99}
+
+/* nav */
+header.nav{position:sticky;top:0;z-index:20;background:rgba(18,21,19,.86);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+header.nav .wrap{display:flex;align-items:center;gap:20px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none;font-weight:700;font-size:18px;letter-spacing:-.01em}
+.brand img{width:30px;height:30px;border-radius:8px}
+nav.links{display:flex;gap:22px;margin-left:auto}
+nav.links a{color:var(--text-2);text-decoration:none;font-size:14px;font-weight:600}
+nav.links a:hover{color:var(--text)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:46px;padding:0 22px;border-radius:23px;font-weight:700;font-size:15px;text-decoration:none;border:none;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--mint);color:var(--on-mint)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.quiet{background:var(--fill);color:var(--text)}
+.btn.sm{height:38px;padding:0 16px;font-size:14px}
+@media (max-width:820px){nav.links{display:none}header.nav .btn{margin-left:auto}}
+
+/* hero */
+.hero{padding:72px 0 40px}
+.hero .wrap{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--mint);background:var(--mint-t);padding:6px 12px;border-radius:14px}
+h1{font-size:clamp(38px,6vw,60px);line-height:1.04;letter-spacing:-.035em;font-weight:700;margin:18px 0 18px}
+h1 .grad{background:linear-gradient(90deg,var(--mint),var(--sky) 55%,var(--wheat));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{font-size:19px;color:var(--text-2);margin:0 0 28px;max-width:34em}
+.cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.meta{margin-top:16px;font-size:13px;color:var(--text-3)}
+.phones{position:relative;height:560px}
+.phone{position:absolute;width:250px;border-radius:30px;overflow:hidden;border:1px solid var(--line);box-shadow:0 30px 60px rgba(0,0,0,.45);background:var(--card)}
+.phone.a{left:0;top:40px;transform:rotate(-4deg)}
+.phone.b{left:180px;top:0;z-index:2}
+.phone.c{left:40%;top:70px;transform:rotate(4deg);display:none}
+@media (max-width:900px){.hero .wrap{grid-template-columns:1fr}.phones{height:520px;max-width:440px;margin:0 auto;width:100%}.phone.b{left:auto;right:0}}
+@media (max-width:480px){.phones{height:440px}.phone{width:200px}.phone.a{left:-6px}}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:32px 0 8px}
+.stat{background:var(--card);border-radius:20px;padding:18px 20px}
+.stat b{display:block;font-size:28px;letter-spacing:-.02em;font-weight:700}
+.stat span{font-size:13px;color:var(--text-2)}
+@media (max-width:720px){.stats{grid-template-columns:repeat(2,1fr)}}
+
+/* sections */
+section{padding:56px 0}
+h2{font-size:clamp(28px,4vw,38px);letter-spacing:-.025em;line-height:1.1;margin:0 0 12px;font-weight:700}
+.sub{color:var(--text-2);font-size:17px;margin:0 0 32px;max-width:40em}
+.feature{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;padding:36px 0;border-top:1px solid var(--line)}
+.feature:first-of-type{border-top:none}
+.feature.flip .shots{order:-1}
+.feature h3{font-size:24px;letter-spacing:-.02em;margin:0 0 10px}
+.feature p{color:var(--text-2);margin:0 0 14px}
+.feature ul{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+.feature li{position:relative;padding-left:26px;color:var(--text)}
+.feature li::before{content:'';position:absolute;left:4px;top:.62em;width:10px;height:10px;border-radius:4px;background:var(--mint)}
+.feature li.sky::before{background:var(--sky)}.feature li.wheat::before{background:var(--wheat)}
+.shots{display:flex;gap:14px;justify-content:center}
+.shots figure{margin:0;flex:0 1 240px}
+.shots img{border-radius:24px;border:1px solid var(--line);background:var(--card)}
+figcaption{font-size:12.5px;color:var(--text-3);text-align:center;margin-top:8px}
+@media (max-width:860px){.feature{grid-template-columns:1fr;gap:24px}.feature.flip .shots{order:0}}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;margin-right:4px;vertical-align:1px}
+.tag.label{background:var(--text);color:var(--bg)}.tag.spec{background:var(--mint-t);color:var(--mint)}.tag.lab{background:var(--sky-t);color:var(--sky)}.tag.est{background:var(--wheat-t);color:var(--wheat)}
+
+/* gallery */
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+.gallery figure{margin:0}
+.gallery img{border-radius:20px;border:1px solid var(--line)}
+
+/* how-to */
+.howto{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.howto{grid-template-columns:1fr}}
+details{background:var(--card);border-radius:20px;padding:0 20px}
+details[open]{padding-bottom:16px}
+summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;min-height:64px;font-weight:700;font-size:16px}
+summary::-webkit-details-marker{display:none}
+summary .n{flex:none;width:30px;height:30px;border-radius:15px;background:var(--fill-2);color:var(--mint);display:flex;align-items:center;justify-content:center;font-size:13px}
+summary::after{content:'+';margin-left:auto;color:var(--text-3);font-size:22px;font-weight:400}
+details[open] summary::after{content:'–'}
+details ol,details ul{margin:0;padding-left:22px;color:var(--text-2)}
+details li{margin:6px 0}
+details li b,details p b{color:var(--text)}
+details p{color:var(--text-2);margin:8px 0}
+kbd,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:var(--fill-2);padding:2px 6px;border-radius:6px;color:var(--text)}
+
+/* privacy / verify */
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media (max-width:820px){.grid3{grid-template-columns:1fr}}
+.card{background:var(--card);border-radius:22px;padding:22px}
+.card h3{margin:0 0 8px;font-size:18px}
+.card p{margin:0;color:var(--text-2);font-size:15px}
+.fp{display:block;overflow-wrap:anywhere;margin-top:10px;padding:12px 14px;background:var(--fill);border-radius:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--text);line-height:1.5}
+.callout{background:var(--mint-t);border-radius:20px;padding:18px 22px;color:var(--text)}
+.callout.warn{background:var(--wheat-t)}
+footer{border-top:1px solid var(--line);padding:32px 0 48px;color:var(--text-3);font-size:14px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center}
+footer a{color:var(--text-2);text-decoration:none}footer a:hover{color:var(--text)}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="assets/icon.svg" alt="">Spectra</a>
+    <nav class="links" aria-label="Sections">
+      <a href="#features">Features</a><a href="#how-to">How to</a><a href="#privacy">Privacy</a><a href="#install">Install</a><a href="https://github.com/m0n0t0ne0ne/spectra">GitHub</a>
+    </nav>
+    <a class="btn primary sm" href="https://github.com/m0n0t0ne0ne/spectra/releases/latest/download/Spectra.apk">Download</a>
+  </div>
+</header>
+
+<main id="main">
+<div class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow">Version 1.0 · Android</span>
+      <h1>Every nutrient.<br><span class="grad">Label first.</span></h1>
+      <p class="lede">Spectra is a food diary that tracks more than 90 nutrients, not just calories. It reads the nutrition label first, fills the gaps from spec sheets and USDA lab data, marks every estimate, and tells you what to change.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/m0n0t0ne0ne/spectra/releases/latest/download/Spectra.apk">Download for Android</a>
+        <a class="btn quiet" href="#how-to">How to use it</a>
+      </div>
+      <p class="meta">Free · Android 10 or newer · No account · Your data stays on your phone</p>
+    </div>
+    <div class="phones" aria-hidden="true">
+      <div class="phone a"><img src="screenshots/01-diary.webp" alt="" width="520" height="1125"></div>
+      <div class="phone b"><img src="screenshots/08-insights.webp" alt="" width="520" height="1125"></div>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat"><b>90+</b><span>nutrients tracked, with kJ</span></div>
+      <div class="stat"><b>4</b><span>data sources, each labelled</span></div>
+      <div class="stat"><b>0</b><span>accounts, ads or trackers</span></div>
+      <div class="stat"><b>100%</b><span>of your diary stays on your phone</span></div>
+    </div>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>What it does</h2>
+    <p class="sub">Built for people who want exact numbers: tiny amounts aren't rounded to zero, so they add up across the day the way they really do.</p>
+
+    <div class="feature">
+      <div>
+        <h3>A diary that answers "how am I doing today?"</h3>
+        <p>The summary card at the top of the diary has four swipeable views.</p>
+        <ul>
+          <li><b>Energy:</b> eaten vs. today's target, workouts added to it automatically, calories burned, your deficit or surplus, and what's left to eat.</li>
+          <li class="sky"><b>Macros</b> in grams and as a share of calories.</li>
+          <li class="wheat"><b>Nutrients:</b> your nutrient score and what's lowest today.</li>
+          <li><b>Trend:</b> weekly or monthly bars colored by surplus, maintain or deficit, against what you burned.</li>
+        </ul>
+      </div>
+      <div class="shots">
+        <figure><img src="screenshots/01-diary.webp" alt="Diary summary showing 1,625 kcal eaten of a 2,309 kcal target, macros split and a 1,184 kcal deficit" loading="lazy" width="520" height="1125"><figcaption>Energy view</figcaption></figure>
+        <figure><img src="screenshots/03-trend.webp" alt="Trend view with a month of daily calorie bars against calories burned" loading="lazy" width="520" height="1125"><figcaption>Trend view</figcaption></figure>
+      </div>
+    </div>
+
+    <div class="feature flip">
+      <div>
+        <h3>Meals your way</h3>
+        <p>Breakfast, lunch, snacks and dinner to start, then make it yours.</p>
+        <ul>
+          <li>Add meals like "Pre-workout" or "Brunch", rename, reorder or delete them. Deleting moves its foods to another meal, so nothing is lost.</li>
+          <li>Swipe a meal or food right for its menu: nutrition summary, copy to tomorrow, add again, remove.</li>
+          <li class="sky">Long-press a food to drag it into a different order.</li>
+        </ul>
+      </div>
+      <div class="shots">
+        <figure><img src="screenshots/02-meals.webp" alt="Meals list with breakfast, lunch and snacks and their foods" loading="lazy" width="520" height="1125"><figcaption>Meals</figcaption></figure>
+        <figure><img src="screenshots/16-meal-menu.webp" alt="Meal menu with move up, rename, add a meal below and delete meal" loading="lazy" width="520" height="1125"><figcaption>Meal menu</figcaption></figure>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div>
+        <h3>Find any food in seconds</h3>
+        <p>One search box for your own foods, the USDA database and barcode numbers, with the scanner one tap away.</p>
+        <ul>
+          <li>The scanner waits for a steady, check-digit-valid read before accepting a barcode, so it doesn't log the wrong product.</li>
+          <li class="sky">Product not in any database? <b>Ask Gemini</b>, then share or paste its answer back. Spectra reads it on the phone in a fraction of a second.</li>
+          <li class="wheat">Filter your foods by Recent, Protein, Produce, Dairy, Grains, Snacks, Supplements and more; tap + to log your usual amount.</li>
+        </ul>
+      </div>
+      <div class="shots">
+        <figure><img src="screenshots/04-add-food.webp" alt="Add food screen with a search box, scan button and filter chips" loading="lazy" width="520" height="1125"><figcaption>Add food</figcaption></figure>
+      </div>
+    </div>
+
+    <div class="feature flip">
+      <div>
+        <h3>See where every number comes from</h3>
+        <p>Each value carries its source, and Spectra uses the most exact one that agrees with the label.</p>
+        <ul>
+          <li><span class="tag label">Label</span> printed on the package · <span class="tag spec">Spec</span> manufacturer spec sheet · <span class="tag lab">Lab</span> USDA lab analysis · <span class="tag est">est.</span> clearly marked estimate.</li>
+          <li class="sky">Serving sizes from the label, plus g, oz, lb and baking measures (tsp, tbsp, cup, fl oz, ml) with real density conversion.</li>
+          <li class="wheat">Edit an entry to preview new portions; the numbers update as you type, and nothing changes until you tap <b>Save</b>.</li>
+        </ul>
+      </div>
+      <div class="shots">
+        <figure><img src="screenshots/05-food.webp" alt="Edit entry for baked salmon with a Save button and the previous amount shown" loading="lazy" width="520" height="1125"><figcaption>Preview, then Save</figcaption></figure>
+        <figure><img src="screenshots/06-food-nutrients.webp" alt="Nutrient list for salmon, each value tagged Lab" loading="lazy" width="520" height="1125"><figcaption>Sourced nutrients</figcaption></figure>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div>
+        <h3>Insights from everything you've logged</h3>
+        <p>Pick 7, 30 or 90 days, or all time. Tap any line in the summary to jump to its chart.</p>
+        <ul>
+          <li>Where your weight is heading, how fast, and whether that matches your goal, including how many days you missed your calorie deficit and by how much.</li>
+          <li class="sky">Your scale weight next to what your calories predict, with likely reasons when they disagree.</li>
+          <li class="wheat">Nutrient gaps, omega-6 : omega-3 ratio, sodium, added sugar and saturated fat, and specific foods to add or cut, chosen from foods you already eat.</li>
+        </ul>
+      </div>
+      <div class="shots">
+        <figure><img src="screenshots/08-insights.webp" alt="Insights summary: Mostly on track, with statuses for calorie goal, protein, fiber and more" loading="lazy" width="520" height="1125"><figcaption>At a glance</figcaption></figure>
+        <figure><img src="screenshots/09-insights-balance.webp" alt="Daily balance chart against a minus 500 kcal goal line" loading="lazy" width="520" height="1125"><figcaption>Goal tracking</figcaption></figure>
+      </div>
+    </div>
+
+    <div class="feature flip">
+      <div>
+        <h3>A daily report card</h3>
+        <p>Every nutrient against targets set for your age, sex and life stage (pregnancy and breastfeeding included), from the Dietary Reference Intakes.</p>
+        <ul>
+          <li>Met, below, and over a limit, with the share of estimated values.</li>
+          <li class="sky">Tap any nutrient for what it does, good sources, your upper limit, and which foods today it came from.</li>
+          <li class="wheat">Set your own target for any nutrient when you need one.</li>
+        </ul>
+      </div>
+      <div class="shots">
+        <figure><img src="screenshots/07-report.webp" alt="Report with 44% of targets met and nutrient bars" loading="lazy" width="520" height="1125"><figcaption>Report</figcaption></figure>
+        <figure><img src="screenshots/11-insights-nutrients.webp" alt="Nutrient adequacy bars, with zinc and fiber below 70 percent" loading="lazy" width="520" height="1125"><figcaption>Nutrient score</figcaption></figure>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div>
+        <h3>Your data, under your control</h3>
+        <p>No account and no cloud. Everything is saved in the app's private storage on your phone.</p>
+        <ul>
+          <li>See how much space your diary, foods, and weights and workouts take.</li>
+          <li class="sky">Export everything, one day, a month, a year or any date range. Import with "keep mine" or "replace".</li>
+          <li class="wheat">Select old months to export and delete in one step. Foods still in your diary are protected.</li>
+        </ul>
+      </div>
+      <div class="shots">
+        <figure><img src="screenshots/14-storage.webp" alt="Storage card with diary, foods, and weights and workouts" loading="lazy" width="520" height="1125"><figcaption>Storage</figcaption></figure>
+        <figure><img src="screenshots/15-data-diary.webp" alt="Diary data manager with months selected and Export and Delete buttons" loading="lazy" width="520" height="1125"><figcaption>Manage data</figcaption></figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="gallery" style="padding-top:8px">
+  <div class="wrap">
+    <h2>More screens</h2>
+    <p class="sub">Real screens from version 1.0 with sample data.</p>
+    <div class="gallery">
+      <figure><img src="screenshots/10-insights-weight.webp" alt="Weight trend: scale vs. predicted" loading="lazy" width="520" height="1125"><figcaption>Weight trend</figcaption></figure>
+      <figure><img src="screenshots/12-insights-change.webp" alt="What to change: more zinc and fiber, with foods you already eat" loading="lazy" width="520" height="1125"><figcaption>What to change</figcaption></figure>
+      <figure><img src="screenshots/13-targets.webp" alt="Targets with weight log and BMR calculator" loading="lazy" width="520" height="1125"><figcaption>Targets and weight</figcaption></figure>
+      <figure><img src="screenshots/06-food-nutrients.webp" alt="Food nutrients" loading="lazy" width="520" height="1125"><figcaption>Food detail</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="how-to">
+  <div class="wrap">
+    <h2>How to</h2>
+    <p class="sub">Everything you need, from install to your first Insights. Tap a step to open it.</p>
+    <div class="howto">
+
+      <details id="install-steps"><summary><span class="n">1</span>Install Spectra</summary>
+        <ol>
+          <li>On your Android phone, tap <a href="https://github.com/m0n0t0ne0ne/spectra/releases/latest/download/Spectra.apk"><b>Download</b></a>.</li>
+          <li>Open the downloaded <code>Spectra.apk</code>. If Android asks, allow your browser or Files app to <b>install unknown apps</b>, then go back and tap <b>Install</b>.</li>
+          <li>If Play Protect asks about an unrecognized developer, tap <b>More details → Install anyway</b>. Spectra isn't on Google Play, so Play Protect doesn't know it yet.</li>
+          <li>Optional: <a href="#install">check the download</a> matches the official signing key.</li>
+        </ol>
+      </details>
+
+      <details><summary><span class="n">2</span>Set up your targets</summary>
+        <ol>
+          <li>Open <b>Targets</b> and log today's weight.</li>
+          <li>In <b>BMR calculator</b>, enter sex, age, height and daily activity. Spectra calculates what you burn (Mifflin-St Jeor).</li>
+          <li>In <b>Weight goal</b>, choose lose, maintain or gain and a rate (for example 1 lb a week = a 500 kcal daily deficit). Turn on <b>Set my energy target from this</b>.</li>
+          <li>Life stage, diet and smoking adjust your vitamin and mineral targets automatically.</li>
+        </ol>
+      </details>
+
+      <details><summary><span class="n">3</span>Add a free Gemini key (recommended)</summary>
+        <p>Labels leave out most vitamins and minerals. With a key, Spectra looks them up for each new product.</p>
+        <ol>
+          <li>Go to <b>aistudio.google.com</b>, sign in, and choose <b>Get API key</b>. The free tier is enough for personal use; a Gemini app subscription doesn't include API access.</li>
+          <li>In Spectra, open <b>Targets → Data sources</b>, paste the key, and tap <b>Test key</b>.</li>
+          <li>Optional: add a free USDA key from <b>api.data.gov/signup</b> for faster searches.</li>
+        </ol>
+        <p>Keys are stored only on your phone and are never included in exports.</p>
+      </details>
+
+      <details><summary><span class="n">4</span>Log a food</summary>
+        <ol>
+          <li>In the diary, tap <b>+</b> on a meal.</li>
+          <li><b>Scan</b> with the round button beside the search box, or <b>search</b> by name or brand. Your own foods appear first; press Enter to search USDA too.</li>
+          <li>Pick the amount and unit (servings, g, oz, or <b>Baking</b> for tsp/tbsp/cup) and tap <b>Add to …</b>.</li>
+          <li>Foods you've logged before have a <b>+</b> for one-tap logging with your usual amount.</li>
+        </ol>
+      </details>
+
+      <details><summary><span class="n">5</span>When a product isn't found</summary>
+        <ol>
+          <li>Tap <b>✦ Ask Gemini</b>. Spectra opens the Gemini app with a prepared question about that product.</li>
+          <li>In Gemini, tap <b>Share</b> under the answer and choose <b>Spectra</b>, or copy the answer and tap <b>Paste answer</b>.</li>
+          <li>Spectra reads every nutrient line, uses the label's serving size, and marks estimates as <span class="tag est">est.</span></li>
+          <li>Or tap <b>Create it yourself</b> and enter the label's serving size and values.</li>
+        </ol>
+      </details>
+
+      <details><summary><span class="n">6</span>Edit what you logged</summary>
+        <ol>
+          <li>Tap a food in the diary.</li>
+          <li>Change the amount with <b>−</b>/<b>+</b> or by typing, or change unit, meal or time. Calories and nutrients update as you go.</li>
+          <li>Tap <b>Save</b> (top right) to keep it. Tap the "Was …" line to go back, or just go back to discard.</li>
+          <li>To remove it, swipe the food right in the diary and choose <b>Remove from diary</b>.</li>
+        </ol>
+      </details>
+
+      <details><summary><span class="n">7</span>Customize meals</summary>
+        <ol>
+          <li>Tap <b>+ Add meal</b> next to the Meals heading, or swipe a meal right and tap <b>⋯ → Add a meal below</b>.</li>
+          <li>From the same ⋯ menu: <b>Move up</b>, <b>Move down</b>, <b>Rename meal</b>, <b>Clear meal</b> or <b>Delete meal</b>.</li>
+          <li>Long-press a food to drag it within its meal.</li>
+        </ol>
+      </details>
+
+      <details><summary><span class="n">8</span>Log workouts and weight</summary>
+        <ol>
+          <li>In the diary, under <b>Activities</b>, tap <b>Add activity</b>, pick the type and minutes. Calories are calculated from your weight.</li>
+          <li>Workout calories are added to that day's target, so your planned deficit stays the same (you can turn this off in Targets).</li>
+          <li>Log your weight in <b>Targets</b> a few times a week. Insights compares it with what your calories predict.</li>
+        </ol>
+      </details>
+
+      <details><summary><span class="n">9</span>Read your Insights</summary>
+        <ol>
+          <li>Open <b>Insights</b> and pick a period.</li>
+          <li>The top card rates calorie goal, protein, fiber, vitamins and minerals, sodium and more. Tap a line to jump to its details.</li>
+          <li><b>What to change</b> lists the specific nutrients to add or cut and the foods to do it with.</li>
+          <li>Days far under your target are treated as partly logged and left out, so averages stay honest.</li>
+        </ol>
+      </details>
+
+      <details><summary><span class="n">10</span>Export, import and clean up</summary>
+        <ol>
+          <li><b>Targets → Your data → Export</b>: everything, a day, a month, a year or a range. The file goes to Downloads.</li>
+          <li><b>Import</b>: pick the file, choose the range, and choose <b>Keep mine, add missing</b> or <b>Replace with backup</b>.</li>
+          <li>Tap <b>Diary</b>, <b>Foods</b> or <b>Weights and workouts</b> on the storage card to select months or unused foods, then <b>Export</b> or <b>Delete</b>.</li>
+        </ol>
+      </details>
+
+      <details><summary><span class="n">11</span>Move from a test build ("Nutrients")</summary>
+        <ol>
+          <li>In the old app, open <b>Targets → Your data → Export → Everything</b>.</li>
+          <li>Install Spectra. It installs alongside the old app.</li>
+          <li>In Spectra, <b>Targets → Your data → Import</b>, pick the file, tap <b>Import</b>. Re-enter your API keys (they're never exported).</li>
+          <li>When everything looks right, uninstall the old app.</li>
+        </ol>
+      </details>
+
+      <details><summary><span class="n">12</span>Update to a new version</summary>
+        <ol>
+          <li>Download the latest <code>Spectra.apk</code> from this page and install it over the current app. Your data stays.</li>
+          <li>Your version is shown in <b>Targets → About</b>.</li>
+          <li>Android will only install an update signed with the same key, which protects you from tampered copies.</li>
+        </ol>
+      </details>
+
+    </div>
+  </div>
+</section>
+
+<section id="privacy">
+  <div class="wrap">
+    <h2>Private by design</h2>
+    <p class="sub">No account, no analytics, no ads. <a href="privacy.html">Read the full privacy policy.</a></p>
+    <div class="grid3">
+      <div class="card"><h3>Stays on your phone</h3><p>Your diary, foods, weights and keys live in the app's private storage. They're excluded from Android cloud backup and device transfer; move them only with Export.</p></div>
+      <div class="card"><h3>Only what's needed leaves</h3><p>Barcode numbers and food names go to Open Food Facts and USDA to look products up. AI questions go to Gemini or Claude with your own key. Nothing else is sent anywhere.</p></div>
+      <div class="card"><h3>Locked down</h3><p>Encrypted connections only, a strict content policy that blocks third-party scripts, and links that can only open web pages. The source code is public.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Download and verify</h2>
+    <p class="sub">Every release is built and signed the same way. You can check the file before installing.</p>
+    <div class="grid3">
+      <div class="card"><h3>Download</h3><p>The latest version, for Android 10 and newer (64-bit and 32-bit ARM).</p><p style="margin-top:14px"><a class="btn primary sm" href="https://github.com/m0n0t0ne0ne/spectra/releases/latest/download/Spectra.apk">Spectra.apk</a> <a class="btn quiet sm" href="https://github.com/m0n0t0ne0ne/spectra/releases">All releases</a></p></div>
+      <div class="card"><h3>Signing certificate</h3><p>Official builds are signed with this certificate (SHA-256):</p><code class="fp">D3:83:DB:A8:E0:45:83:83:64:D0:5A:D6:3C:88:00:B5:78:89:F3:67:3F:9F:F7:8B:C9:F4:B4:69:6E:4F:6E:E6</code></div>
+      <div class="card"><h3>Check it</h3><p>Compare the file with <code>SHA256SUMS.txt</code> on the release, or check the certificate with <code>apksigner verify --print-certs Spectra.apk</code>. Tools like AppVerifier do the same on the phone.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" style="padding-top:8px">
+  <div class="wrap">
+    <h2>Questions</h2>
+    <div class="howto" style="margin-top:20px">
+      <details><summary>Is it free?</summary><p>Yes. Spectra is free with no ads or subscriptions. Gemini's free tier covers personal use; if you use Claude instead, Anthropic bills your own API account.</p></details>
+      <details><summary>Does it work offline?</summary><p>Logging foods you've saved, the diary, Report and Insights all work offline. Looking up new products needs a connection.</p></details>
+      <details><summary>Why not just use the label?</summary><p>US labels only require a handful of nutrients and round small amounts to 0. Spectra keeps the label's numbers and adds the rest from spec sheets and lab data, each marked with its source.</p></details>
+      <details><summary>Is it on Google Play or iPhone?</summary><p>Not yet. Version 1.0 is a direct Android download. The app is a web app inside an Android shell, so other platforms are possible later.</p></details>
+      <details><summary>How much storage does it use?</summary><p>About half a megabyte per year of daily logging, plus about 5 KB per saved food. See exact numbers in Targets → Your data.</p></details>
+      <details><summary>Found a bug or a security issue?</summary><p>Open an issue on <a href="https://github.com/m0n0t0ne0ne/spectra/issues">GitHub</a>. For security problems, see <a href="https://github.com/m0n0t0ne0ne/spectra/security/policy">the security policy</a> and report privately.</p></details>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top" style="font-size:15px"><img src="assets/icon.svg" alt="" style="width:22px;height:22px">Spectra 1.0</a>
+    <a href="privacy.html">Privacy</a>
+    <a href="https://github.com/m0n0t0ne0ne/spectra">Source code</a>
+    <a href="https://github.com/m0n0t0ne0ne/spectra/releases">Releases</a>
+    <span style="margin-left:auto">Nutrition guidance, not medical advice.</span>
+  </div>
+</footer>
+</body>
+</html>

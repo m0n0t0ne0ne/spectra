@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spectra privacy policy</title>
+<meta name="description" content="How Spectra handles your data: everything stays on your phone.">
+<meta name="theme-color" content="#121513">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; script-src 'none'; object-src 'none'; base-uri 'none'">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<style>
+@font-face{font-family:Manrope;font-style:normal;font-weight:200 800;font-display:swap;src:url(assets/manrope-latin.woff2) format('woff2')}
+:root{--bg:#121513;--card:#1A1F1C;--fill-2:#2C332F;--line:#2A302C;--text:#E8ECE9;--text-2:#A3ABA6;--text-3:#8A938D;--mint:#8FD3B6}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Manrope,system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+a{color:var(--mint)}
+.wrap{max-width:760px;margin:0 auto;padding:0 20px}
+header{border-bottom:1px solid var(--line)}
+header .wrap{display:flex;align-items:center;gap:10px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none;font-weight:700;font-size:18px}
+.brand img{width:28px;height:28px;border-radius:8px}
+h1{font-size:clamp(32px,5vw,44px);letter-spacing:-.03em;line-height:1.1;margin:48px 0 8px}
+.updated{color:var(--text-3);font-size:14px;margin:0 0 32px}
+h2{font-size:21px;letter-spacing:-.01em;margin:36px 0 10px}
+p,li{color:var(--text-2)}
+b,strong{color:var(--text)}
+ul{padding-left:22px}
+li{margin:6px 0}
+.summary{background:var(--card);border-radius:20px;padding:20px 22px}
+.summary p{margin:0}
+table{width:100%;border-collapse:collapse;font-size:15px;margin:10px 0}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--text);font-weight:700}
+td{color:var(--text-2)}
+.scroll{overflow-x:auto}
+footer{border-top:1px solid var(--line);margin-top:56px;padding:28px 0 48px;color:var(--text-3);font-size:14px}
+footer a{color:var(--text-2)}
+</style>
+</head>
+<body>
+<header><div class="wrap"><a class="brand" href="./"><img src="assets/icon.svg" alt="">Spectra</a></div></header>
+<main class="wrap">
+  <h1>Privacy policy</h1>
+  <p class="updated">Applies to Spectra 1.0 and later · Last updated October 24, 2026</p>
+
+  <div class="summary"><p><b>In short:</b> Spectra has no account, no server of its own, no analytics and no ads. Your diary, foods, weights, workouts, settings and API keys are stored only on your phone. To look up foods, the app sends the barcode number or food name you ask about to the services listed below, and nothing else.</p></div>
+
+  <h2>What Spectra stores</h2>
+  <p>On your phone, in the app's private storage that other apps can't read:</p>
+  <ul>
+    <li>Your food diary: foods, amounts, meals and times.</li>
+    <li>Saved foods and their nutrient values and sources.</li>
+    <li>Weights, workouts, targets and profile details you enter (such as age, height, sex, life stage, activity level and goal).</li>
+    <li>API keys you add for Gemini, Claude or USDA.</li>
+  </ul>
+  <p>This data is <b>excluded from Android cloud backup and device-to-device transfer</b>, so it never reaches Google's backup servers through Spectra. Uninstalling the app deletes it. To keep a copy or move to a new phone, use <b>Targets → Your data → Export</b>; exports never include API keys.</p>
+
+  <h2>What leaves your phone</h2>
+  <p>Only when you look something up, and only to the service that answers it. All connections are encrypted (HTTPS); the app refuses unencrypted connections.</p>
+  <div class="scroll"><table>
+    <tr><th>Service</th><th>When</th><th>What is sent</th></tr>
+    <tr><td><b>Open Food Facts</b></td><td>You scan or type a barcode</td><td>The barcode number</td></tr>
+    <tr><td><b>USDA FoodData Central</b></td><td>You scan a barcode or search for a food</td><td>The barcode number or search words, and your USDA key if you added one</td></tr>
+    <tr><td><b>Google Gemini API</b></td><td>Only if you added a Gemini key, when a product needs nutrient data or you test the key</td><td>The product's barcode, name, brand and label serving, and your key</td></tr>
+    <tr><td><b>Anthropic Claude API</b></td><td>Only if you chose Claude and added a key</td><td>Same as Gemini</td></tr>
+    <tr><td><b>Gemini app</b></td><td>You tap Ask Gemini</td><td>A prepared question about the product, handed to the Gemini app on your phone; you see it before sending</td></tr>
+  </table></div>
+  <p>Your diary, weights, health details and other foods are <b>never</b> sent. Those services handle requests under their own privacy policies.</p>
+
+  <h2>Camera</h2>
+  <p>The camera is used only while the barcode scanner is open. Barcodes are read on the phone by a bundled Google ML Kit model; images are not saved or sent. If the built-in scanner can't start, the app can use Google's code scanner from Google Play services, which also works on the phone.</p>
+
+  <h2>What Spectra doesn't do</h2>
+  <ul>
+    <li>No account, sign-in or user ID.</li>
+    <li>No analytics, crash reporting, advertising or tracking libraries.</li>
+    <li>No location, contacts, microphone or storage permissions. The app asks for internet, camera and vibration (scanner feedback); Google's scanner libraries add a network-status check.</li>
+    <li>No selling or sharing of data. There is no data on any Spectra server to share.</li>
+  </ul>
+
+  <h2>Files you export</h2>
+  <p>Exports are saved to your phone's Downloads folder. Once there, they are ordinary files: other apps with access to Downloads can read them, and you control where they go. Delete exports you no longer need.</p>
+
+  <h2>Children</h2>
+  <p>Spectra is a general nutrition tool and isn't directed at children under 13.</p>
+
+  <h2>Not medical advice</h2>
+  <p>Targets, projections and suggestions are general nutrition guidance based on published Dietary Reference Intakes and your own logging. Talk to a doctor or registered dietitian about medical decisions.</p>
+
+  <h2>Changes and contact</h2>
+  <p>Changes to this policy are published on this page and in the app's source repository, with the date above updated. Questions or concerns: open an issue at <a href="https://github.com/m0n0t0ne0ne/spectra/issues">github.com/m0n0t0ne0ne/spectra</a>, or report security issues privately as described in the <a href="https://github.com/m0n0t0ne0ne/spectra/security/policy">security policy</a>.</p>
+</main>
+<footer><div class="wrap"><a href="./">Spectra home</a> · <a href="https://github.com/m0n0t0ne0ne/spectra">Source code</a></div></footer>
+</body>
+</html>

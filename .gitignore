@@ -1,0 +1,22 @@
+# Signing material and local machine settings never go in the repository.
+*.jks
+*.keystore
+*.p12
+*.pem
+keystore.properties
+local.properties
+.env*
+
+# Build output
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+dist/
+
+# Editors and OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+__pycache__/

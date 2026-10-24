@@ -76,7 +76,7 @@ val copyWebApp by tasks.registering(Sync::class) {
 tasks.named("preBuild") { dependsOn(copyWebApp) }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.webkit:webkit:1.12.1")
     // Google's barcode scanner UI (runs through Google Play services), used as a fallback.

@@ -16,7 +16,7 @@ Store the keystore file and the password in a password manager (for example as a
 ### 2. Add them to GitHub
 
 1. In the repository: **Settings → Environments → New environment**, name it `release`.
-2. Optional but recommended: under **Deployment branches and tags**, choose **Selected branches and tags** and add the tag rule `v*.*.*`. Add yourself as a **required reviewer** if you want to approve each release.
+2. Optional: add yourself as a **required reviewer** if you want to approve each release before it's published. If you limit **Deployment branches and tags**, allow the `main` branch.
 3. In that environment, **Add environment secret** twice:
    - `SPECTRA_KEYSTORE_BASE64`: the keystore as base64. On macOS/Linux: `base64 -i spectra-release.jks | tr -d '\n'`; on Windows PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("spectra-release.jks"))`.
    - `SPECTRA_KEYSTORE_PASSWORD`: the password.
@@ -31,18 +31,16 @@ Store the keystore file and the password in a password manager (for example as a
 
 ## Publishing a release
 
-1. Update anything user-facing (website text, screenshots with `python3 tools/screenshots.py`, the privacy policy date if it changed).
-2. Bump `APP_VERSION` in `web/js/app.js` and the cache name in `web/sw.js` to the new version.
-3. Commit and push to `main`; wait for **CI** to pass.
-4. Tag and push:
-   ```bash
-   git tag -a v1.0.1 -m "Spectra 1.0.1"
-   git push origin v1.0.1
-   ```
-5. Optional: write the release notes in `.github/release-notes/v1.0.1.md` before tagging; otherwise GitHub generates them.
-6. The **Release** workflow builds the APK with `VERSION_NAME` from the tag (`1.0.1` → versionCode `10001`), signs it, verifies the certificate, and publishes `Spectra.apk`, `Spectra-1.0.1.apk`, `SHA256SUMS.txt` and `signing-certificate.txt` with generated notes. Edit the notes on GitHub if you like.
+Releases are automatic. Nobody creates tags or releases by hand.
 
-To rebuild an existing tag, run the **Release** workflow manually and enter the tag.
+1. Make the changes. Update anything user-facing (website text, screenshots with `python3 tools/screenshots.py`).
+2. Set the new version in **three** places: the `VERSION` file, `APP_VERSION` in `web/js/app.js`, and the cache name in `web/sw.js` (for example `1.0.2`, `'1.0.2'`, `spectra-1.0.2`).
+3. Optional: write the release notes in `.github/release-notes/v1.0.2.md`; otherwise GitHub generates them.
+4. Push to `main`.
+
+The **Release** workflow sees a version that hasn't been released yet. It builds the APK (`1.0.2` → versionCode `10002`), signs it, verifies the certificate, creates the `v1.0.2` tag and publishes `Spectra.apk`, `Spectra-1.0.2.apk`, `SHA256SUMS.txt` and `signing-certificate.txt`. Pushes that don't change `VERSION` do nothing.
+
+To rebuild an existing release, run the **Release** workflow manually from the Actions tab and enter its tag (for example `v1.0.1`).
 
 ## Building a signed APK locally
 

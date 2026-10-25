@@ -76,7 +76,7 @@ Screenshots: `pip install playwright && python3 tools/screenshots.py`.
 
 ## Releasing
 
-Releases are built and signed by GitHub Actions when a `v*.*.*` tag is pushed. See [RELEASING.md](RELEASING.md) for the one-time key setup and the release checklist.
+Releases are automatic: raising the number in `VERSION` and pushing to `main` makes GitHub Actions build, sign and publish the release. See [RELEASING.md](RELEASING.md) for the one-time key setup and the release checklist.
 
 ## Security
 

@@ -92,6 +92,17 @@ figcaption{font-size:12.5px;color:var(--text-3);text-align:center;margin-top:8px
 .gallery figure{margin:0}
 .gallery img{border-radius:20px;border:1px solid var(--line)}
 
+/* watch */
+.watch{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px}
+@media (max-width:1000px){.watch{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.watch{grid-template-columns:1fr;max-width:320px;margin:0 auto}}
+.clip{margin:0;display:flex;flex-direction:column;gap:14px}
+.clip .frame{position:relative;border-radius:30px;padding:8px;background:#0c0e0d;border:1px solid var(--line);box-shadow:0 24px 48px rgba(0,0,0,.4)}
+.clip video{display:block;width:100%;height:auto;aspect-ratio:390/844;border-radius:23px;background:var(--card)}
+.clip figcaption{text-align:left;font-size:15px;color:var(--text-2);margin:0;line-height:1.5}
+.clip figcaption b{display:block;color:var(--text);font-size:17px;margin-bottom:2px}
+.clip figcaption .n{display:inline-flex;width:24px;height:24px;border-radius:12px;background:var(--mint-t);color:var(--mint);font-size:12px;font-weight:700;align-items:center;justify-content:center;margin-right:8px;vertical-align:2px}
+.watchlink{display:inline-block;margin-top:6px;font-weight:700;text-decoration:none}
 /* how-to */
 .howto{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 @media (max-width:760px){.howto{grid-template-columns:1fr}}
@@ -128,7 +139,7 @@ footer a{color:var(--text-2);text-decoration:none}footer a:hover{color:var(--tex
   <div class="wrap">
     <a class="brand" href="#top"><img src="assets/icon.svg" alt="">Spectra</a>
     <nav class="links" aria-label="Sections">
-      <a href="#features">Features</a><a href="#how-to">How to</a><a href="#privacy">Privacy</a><a href="#install">Install</a><a href="https://github.com/m0n0t0ne0ne/spectra">GitHub</a>
+      <a href="#features">Features</a><a href="#watch">Watch</a><a href="#how-to">How to</a><a href="#privacy">Privacy</a><a href="#install">Install</a><a href="https://github.com/m0n0t0ne0ne/spectra">GitHub</a>
     </nav>
     <a class="btn primary sm" href="https://github.com/m0n0t0ne0ne/spectra/releases/latest/download/Spectra.apk">Download</a>
   </div>
@@ -294,6 +305,31 @@ footer a{color:var(--text-2);text-decoration:none}footer a:hover{color:var(--tex
   </div>
 </section>
 
+<section id="watch">
+  <div class="wrap">
+    <h2>Watch how it works</h2>
+    <p class="sub">Short clips recorded from the real app. Each one loops; the mint ring shows where to tap.</p>
+    <div class="watch">
+      <figure class="clip" id="watch-add-food">
+        <div class="frame"><video poster="howto/add-food.jpg" autoplay muted loop playsinline preload="metadata" width="390" height="844" aria-label="Searching for and adding Greek yogurt to lunch"><source src="howto/add-food.webm" type="video/webm"><source src="howto/add-food.mp4" type="video/mp4"></video></div>
+        <figcaption><b><span class="n">1</span>Add a food</b>Tap + on a meal, search your foods or USDA, set the amount and add it.</figcaption>
+      </figure>
+      <figure class="clip" id="watch-gemini">
+        <div class="frame"><video poster="howto/gemini.jpg" autoplay muted loop playsinline preload="metadata" width="390" height="844" aria-label="Asking Gemini about a protein bar, pasting the answer and logging it"><source src="howto/gemini.webm" type="video/webm"><source src="howto/gemini.mp4" type="video/mp4"></video></div>
+        <figcaption><b><span class="n">2</span>Ask Gemini, paste and save</b>When no database has a product, Gemini looks it up; paste its answer and Spectra fills in every nutrient.</figcaption>
+      </figure>
+      <figure class="clip" id="watch-edit-serving">
+        <div class="frame"><video poster="howto/edit-serving.jpg" autoplay muted loop playsinline preload="metadata" width="390" height="844" aria-label="Changing the amount of oats, saving, and adding a 1 cup serving"><source src="howto/edit-serving.webm" type="video/webm"><source src="howto/edit-serving.mp4" type="video/mp4"></video></div>
+        <figcaption><b><span class="n">3</span>Edit a portion and serving</b>Preview a new amount, tap Save to keep it, and set the label’s serving size as a unit.</figcaption>
+      </figure>
+      <figure class="clip" id="watch-swipes">
+        <div class="frame"><video poster="howto/swipes.jpg" autoplay muted loop playsinline preload="metadata" width="390" height="844" aria-label="Moving breakfast below lunch, copying a food to tomorrow and reordering foods"><source src="howto/swipes.webm" type="video/webm"><source src="howto/swipes.mp4" type="video/mp4"></video></div>
+        <figcaption><b><span class="n">4</span>Swipe menus and reordering</b>Swipe meals and foods right for their menus, and long-press a food to drag it.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
 <section id="how-to">
   <div class="wrap">
     <h2>How to</h2>
@@ -329,6 +365,7 @@ footer a{color:var(--text-2);text-decoration:none}footer a:hover{color:var(--tex
       </details>
 
       <details><summary><span class="n">4</span>Log a food</summary>
+        <a class="watchlink" href="#watch-add-food">▶ Watch the clip</a>
         <ol>
           <li>In the diary, tap <b>+</b> on a meal.</li>
           <li><b>Scan</b> with the round button beside the search box, or <b>search</b> by name or brand. Your own foods appear first; press Enter to search USDA too.</li>
@@ -338,6 +375,7 @@ footer a{color:var(--text-2);text-decoration:none}footer a:hover{color:var(--tex
       </details>
 
       <details><summary><span class="n">5</span>When a product isn't found</summary>
+        <a class="watchlink" href="#watch-gemini">▶ Watch the clip</a>
         <ol>
           <li>Tap <b>✦ Ask Gemini</b>. Spectra opens the Gemini app with a prepared question about that product.</li>
           <li>In Gemini, tap <b>Share</b> under the answer and choose <b>Spectra</b>, or copy the answer and tap <b>Paste answer</b>.</li>
@@ -347,6 +385,7 @@ footer a{color:var(--text-2);text-decoration:none}footer a:hover{color:var(--tex
       </details>
 
       <details><summary><span class="n">6</span>Edit what you logged</summary>
+        <a class="watchlink" href="#watch-edit-serving">▶ Watch the clip</a>
         <ol>
           <li>Tap a food in the diary.</li>
           <li>Change the amount with <b>−</b>/<b>+</b> or by typing, or change unit, meal or time. Calories and nutrients update as you go.</li>
@@ -356,6 +395,7 @@ footer a{color:var(--text-2);text-decoration:none}footer a:hover{color:var(--tex
       </details>
 
       <details><summary><span class="n">7</span>Customize meals</summary>
+        <a class="watchlink" href="#watch-swipes">▶ Watch the clip</a>
         <ol>
           <li>Tap <b>+ Add meal</b> next to the Meals heading, or swipe a meal right and tap <b>⋯ → Add a meal below</b>.</li>
           <li>From the same ⋯ menu: <b>Move up</b>, <b>Move down</b>, <b>Rename meal</b>, <b>Clear meal</b> or <b>Delete meal</b>.</li>

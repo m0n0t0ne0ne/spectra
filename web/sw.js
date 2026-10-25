@@ -1,5 +1,5 @@
 // Offline shell for the browser version: cache the app files; food data and AI calls always use the network.
-const CACHE = 'spectra-1.0.0';
+const CACHE = 'spectra-1.0.1';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './js/app.js', './js/api.js', './js/nutrients.js', './js/nutrient-info.js', './js/foodicon.js', './js/precision.js', './js/insights.js', './js/paste.js', './js/pipeline.js', './js/scanner.js', './js/store.js', './icons/icon.svg', './fonts/manrope-latin.woff2', './vendor/zxing-0.20.0.min.js', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

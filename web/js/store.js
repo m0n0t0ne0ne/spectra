@@ -308,9 +308,12 @@ export const store = {
   weights() { return read(K.weights, {}); },
   setWeight(date, lbs) { const w = this.weights(); if (lbs === '' || lbs == null || !(Number(lbs) > 0)) delete w[date]; else w[date] = Number(lbs); write(K.weights, w); },
   // Most recent weight on or before a date.
+  // Your weight on a date: the latest weigh-in on or before it. Days before your first weigh-in use that
+  // first weigh-in, so calories burned can still be estimated for them.
   weightOn(date) {
     const w = this.weights();
-    const d = Object.keys(w).filter((k) => k <= date).sort().pop();
+    const keys = Object.keys(w).sort();
+    const d = keys.filter((k) => k <= date).pop() ?? keys[0];
     return d ? { date: d, lbs: w[d] } : null;
   },
   activities(date) { return (read(K.activities, {})[date] || []).slice().sort((a, b) => a.ts - b.ts); },

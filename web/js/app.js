@@ -17,7 +17,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 const view = () => $('#main');
 // Inside the Android app the native layer provides AndroidBridge (Google barcode scanner, file saving).
 const NATIVE = typeof window.AndroidBridge !== 'undefined';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 const SITE = 'https://m0n0t0ne0ne.github.io/spectra/';
 const appVersion = () => { try { return (NATIVE && window.AndroidBridge.appVersion?.()) || APP_VERSION; } catch { return APP_VERSION; } };
 // Text shared to the app (Gemini's answer → Share → Spectra) opens the paste sheet for the food you asked about.
@@ -78,6 +78,8 @@ function dayTitle(date) {
   if (date === y) return 'Yesterday';
   return new Date(date + 'T12:00:00').toLocaleDateString([], { weekday: 'long' });
 }
+// Weights keep one decimal (151.2 lb), unlike nutrient amounts over 100.
+const lbs = (v) => (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, '');
 const longDate = (date) => new Date(date + 'T12:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 const shiftDate = (date, days) => todayISO(new Date(new Date(date + 'T12:00:00').getTime() + days * 864e5));
 function tsFor(date, hhmm) {
@@ -1261,17 +1263,20 @@ function bodySection() {
   <section class="screen mt16"><div class="card pad col" style="gap:14px">
     <div class="spread" style="align-items:flex-end">
       <div class="col" style="gap:2px"><span class="s13 muted">Weight</span>
-        <span class="row" style="gap:6px;align-items:baseline"><span style="font-size:40px;font-weight:300;letter-spacing:-.03em;line-height:1">${w ? fmt(w.lbs) : '—'}</span><span class="s15 muted">lb</span></span>
-        <span class="small muted">${w ? (w.date === today ? 'Logged today' : 'Last logged ' + longDate(w.date)) : 'Log your weight to calculate BMR'}${change != null ? ` · ${change > 0 ? '+' : ''}${fmt(change)} lb since ${longDate(first[0])}` : ''}</span>
+        <span class="row" style="gap:6px;align-items:baseline"><span style="font-size:40px;font-weight:300;letter-spacing:-.03em;line-height:1">${w ? lbs(w.lbs) : '—'}</span><span class="s15 muted">lb</span></span>
+        <span class="small muted">${w ? (w.date === today ? 'Logged today' : 'Last logged ' + longDate(w.date)) : 'Log your weight to calculate BMR'}${change != null ? ` · ${change > 0 ? '+' : ''}${lbs(change)} lb since ${longDate(first[0])}` : ''}</span>
       </div>
     </div>
-    <form class="row" data-form="weight"><label for="w-in" style="position:absolute;left:-999px">Today's weight in pounds</label>
-      <input class="input" id="w-in" type="number" inputmode="decimal" step="0.1" placeholder="Today's weight (lb)" value="${store.weights()[today] ?? ''}">
-      <button class="btn tint" style="height:48px">Log</button></form>
+    <form class="row" data-form="weight" style="gap:8px">
+      <label for="w-date" style="position:absolute;left:-999px">Date</label>
+      <input class="input" id="w-date" type="date" max="${today}" value="${ui.weightDate || today}" style="width:150px;flex:none">
+      <label for="w-in" style="position:absolute;left:-999px">Weight in pounds</label>
+      <input class="input" id="w-in" type="number" inputmode="decimal" step="0.1" placeholder="Weight (lb)" value="${store.weights()[ui.weightDate || today] ?? ''}" style="min-width:0;flex:1">
+      <button class="btn tint" style="height:48px;flex:none">Log</button></form>
     ${recent.length > 1 ? `<div class="list">${recent.map(([d, v], i) => {
       const prev = recent[i + 1]?.[1];
       const diff = prev != null ? v - prev : null;
-      return `<div class="spread s14" style="padding:9px 0"><span class="muted">${longDate(d)}</span><span class="row" style="gap:12px"><span class="small" style="color:${diff == null ? 'var(--text-3)' : diff > 0 ? 'var(--wheat)' : 'var(--lilac)'}">${diff == null ? '' : (diff > 0 ? '+' : '') + fmt(diff)}</span><span class="b6">${fmt(v)} lb</span><button class="icon-btn ghost" style="width:32px;height:32px" data-act="weight-del" data-d="${d}" aria-label="Delete ${longDate(d)} weight">${I.close}</button></span></div>`;
+      return `<div class="spread s14" style="padding:9px 0"><span class="muted">${longDate(d)}</span><span class="row" style="gap:12px"><span class="small" style="color:${diff == null ? 'var(--text-3)' : diff > 0 ? 'var(--wheat)' : 'var(--lilac)'}">${diff == null ? '' : (diff > 0 ? '+' : '') + lbs(diff)}</span><span class="b6">${lbs(v)} lb</span><button class="icon-btn ghost" style="width:32px;height:32px" data-act="weight-del" data-d="${d}" aria-label="Delete ${longDate(d)} weight">${I.close}</button></span></div>`;
     }).join('')}</div>` : ''}
   </div></section>
 
@@ -2575,6 +2580,7 @@ document.addEventListener('input', (ev) => {
 document.addEventListener('change', async (ev) => {
   const el = ev.target;
 
+  if (el.id === 'w-date') { ui.weightDate = el.value && el.value <= todayISO() ? el.value : null; const box = $('#w-in'); if (box) box.value = store.weights()[ui.weightDate || todayISO()] ?? ''; return; }
   if (el.dataset.settingCheck) { store.saveSettings({ [el.dataset.settingCheck]: el.checked }); toast('Saved'); return; }
   if (el.dataset.act === 'qty-input') { clearTimeout(qtyTimer); ui.add.qty = Math.max(0, Number(el.value) || 0); render(); }
   if (el.dataset.act === 'paste-label' && ui.paste) { ui.paste.replaceLabel = el.checked; store.saveSettings({ pasteOverLabel: el.checked }); renderPaste(); return; }
@@ -2642,8 +2648,11 @@ document.addEventListener('submit', async (ev) => {
   }
   if (form.dataset.form === 'weight') {
     const v = Number($('#w-in').value);
+    const d = $('#w-date')?.value || todayISO();
     if (!(v > 40 && v < 1000)) { toast('Enter your weight in pounds'); return; }
-    store.setWeight(todayISO(), v); render(); toast('Weight logged'); return;
+    if (d > todayISO()) { toast('Pick today or an earlier day'); return; }
+    store.setWeight(d, v); ui.weightDate = null; render();
+    toast(d === todayISO() ? 'Weight logged' : `Weight logged for ${longDate(d)}`); return;
   }
   if (form.dataset.form === 'add-search') {
     const input = document.getElementById('add-q');

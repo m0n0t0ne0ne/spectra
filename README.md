@@ -48,7 +48,7 @@ Check with `apksigner verify --print-certs Spectra.apk`, or compare the file wit
 
 ## Privacy
 
-No account, no analytics, no ads. The diary, foods, weights, settings and API keys stay in the app's private storage and are excluded from Android backup. Only barcode numbers and product names you look up are sent: to Open Food Facts, USDA and UPCitemdb, to DuckDuckGo or Brave to find the product's pages, and (with your own key) to Gemini or Claude. See the [privacy policy](https://m0n0t0ne0ne.github.io/spectra/privacy.html).
+No account, no analytics, no ads. The diary, foods, weights and settings stay in the app's private storage and are excluded from Android backup. Only barcode numbers and product names you look up are sent, to Open Food Facts, USDA and UPCitemdb. Ask Gemini hands a question to the Gemini app, where you see it before sending. See the [privacy policy](https://m0n0t0ne0ne.github.io/spectra/privacy.html).
 
 ## Project layout
 

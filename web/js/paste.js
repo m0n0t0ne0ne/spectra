@@ -1,7 +1,6 @@
 // Turns pasted nutrition text (from Gemini, a spec sheet, a website) into catalog values.
-// Works offline with a line parser; uses the AI provider, when one is set up, for messy text and tables.
+// Works offline with a line parser.
 import { NUTRIENTS, BY_KEY } from './nutrients.js';
-import { askAI, hasAI, parseJSON } from './api.js';
 
 // Extra names people and spec sheets use. Catalog names are added automatically.
 const ALIASES = {
@@ -239,35 +238,4 @@ export function parseLocal(text) {
     }
   }
   return { nutrients: out, comparable: [...comparable], lab: [...lab] };
-}
-
-// AI extraction for tables, paragraphs and mixed units. Returns null when no provider is set up.
-export async function parseWithAI(text, food) {
-  if (!hasAI()) return null;
-  const link = firstUrl(text);
-  text = per100Section(text);
-  const keyList = NUTRIENTS.filter((n) => !n.derived || ['omega3', 'omega6'].includes(n.key)).map((n) => `${n.key} (${n.unit})`).join(', ');
-  const prompt = `Extract nutrient amounts from the text below for the product "${food.brand || ''} ${food.name}".
-Convert each to these keys and units: ${keyList}.
-Use only numbers stated in the text. Do not estimate or fill gaps. Skip % Daily Value numbers.
-basis_grams is the amount of product the values refer to (100 for "per 100 g"; the serving weight in grams for "per serving"). If the text never says, use null.
-List in "lab" every key whose value the text says comes from USDA / lab-analyzed data for a generic version of the food.
-List in "comparable" every key whose value the text says comes from a comparable or similar product, or an estimate.
-Leave label and manufacturer spec-sheet values out of both lists.
-Reply with JSON only inside <json></json>: {"basis_grams": number|null, "source_url": "first source link in the text or empty", "nutrients": {"key": number}, "lab": ["key"], "comparable": ["key"]}
-
-Text:
-"""
-${text.slice(0, 20000)}
-"""`;
-  const { text: reply } = await askAI({ system: 'You convert nutrition text into structured data exactly as stated. You never invent values.', prompt, maxTokens: 3000 });
-  const j = parseJSON(reply);
-  const nutrients = {};
-  for (const [k, v] of Object.entries(j.nutrients || {})) {
-    const n = Number(v);
-    if (BY_KEY[k] && Number.isFinite(n) && n >= 0) nutrients[k] = n;
-  }
-  const comparable = (Array.isArray(j.comparable) ? j.comparable : []).filter((k) => nutrients[k] != null);
-  const lab = (Array.isArray(j.lab) ? j.lab : []).filter((k) => nutrients[k] != null && !comparable.includes(k));
-  return { basis: j.basis_grams > 0 ? Number(j.basis_grams) : null, url: /^https?:\/\//.test(j.source_url || '') ? j.source_url : link, nutrients, comparable, lab };
 }

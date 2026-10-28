@@ -36,7 +36,7 @@ import java.util.concurrent.Executors
 /**
  * Hosts the Spectra web app (copied from ../web into assets/www at build time) in a WebView.
  * The page is served from https://appassets.androidplatform.net so it runs as a secure origin:
- * ES modules, file-backed storage (see storeRead/storeWrite) and network calls to Open Food Facts, USDA and Claude all work.
+ * ES modules, file-backed storage (see storeRead/storeWrite) and network calls to Open Food Facts and USDA all work.
  * Barcode scanning uses Google's code scanner through the AndroidBridge JavaScript interface.
  */
 class MainActivity : ComponentActivity() {
@@ -72,16 +72,18 @@ class MainActivity : ComponentActivity() {
     private val storeDir by lazy { File(filesDir, "store").apply { mkdirs() } }
     private val storeLock = Any()
 
-    // Fetches product pages and search results for nutrient lookups. The web view can't read other sites
-    // directly (browsers block that), so the app does it: GET over HTTPS only, text only, size and time capped.
-    private val fetchPool = Executors.newFixedThreadPool(3)
+    // Looks up product names on UPCitemdb for barcodes the food databases don't know. The web view can't read
+    // other sites directly (browsers block that), so the app does it: GET over HTTPS to allowed hosts only,
+    // text only, size and time capped.
+    private val fetchPool = Executors.newFixedThreadPool(2)
+    private val fetchHosts = setOf("api.upcitemdb.com")
     private val fetchUserAgent = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Mobile Safari/537.36"
     private val maxFetchBytes = 1_500_000
 
     private fun fetchText(urlString: String, headers: JSONObject): Triple<Int, String, String> {
         var url = URL(urlString)
         repeat(5) {
-            if (url.protocol != "https") throw IllegalArgumentException("Only https links are fetched")
+            if (url.protocol != "https" || url.host !in fetchHosts) throw IllegalArgumentException("Host not allowed")
             val c = (url.openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = false
                 connectTimeout = 8000

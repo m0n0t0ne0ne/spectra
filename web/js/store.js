@@ -70,7 +70,7 @@ export function exportData(range = null, parts = ['diary', 'body']) {
   const foods = range || !parts.includes('diary') ? Object.fromEntries(Object.entries(allFoods).filter(([id]) => used.has(id))) : allFoods;
   return {
     app: 'spectra', version: 2, exportedAt: new Date().toISOString(), range: typeof range === 'function' ? null : range,
-    settings: range ? { meals: store.meals() } : { ...s, claudeKey: undefined, geminiKey: undefined, braveKey: undefined, fdcKey: undefined },
+    settings: range ? { meals: store.meals() } : { ...s, fdcKey: undefined },
     foods, log,
     weights: parts.includes('body') ? pick(store.weights(), range) : {},
     activities: parts.includes('body') ? pick(read(K.activities, {}), range) : {}
@@ -174,10 +174,16 @@ const DEFAULT_MEALS = [
   { key: 'breakfast', name: 'Breakfast' }, { key: 'lunch', name: 'Lunch' },
   { key: 'snacks', name: 'Snacks' }, { key: 'dinner', name: 'Dinner' }
 ];
-const DEFAULT_SETTINGS ={ claudeKey: '', model: 'claude-sonnet-5-5', fdcKey: '', targets: {}, name: '' };
+const DEFAULT_SETTINGS = { fdcKey: '', targets: {}, name: '' };
+// Settings from the AI lookup (removed in 1.0.3). Dropped when settings are read, so old keys don't linger.
+const RETIRED = ['claudeKey', 'geminiKey', 'braveKey', 'provider', 'model', 'geminiModel', 'lookupMode'];
 
 export const store = {
-  settings() { return { ...DEFAULT_SETTINGS, ...read(K.settings, {}) }; },
+  settings() {
+    const raw = read(K.settings, {});
+    if (RETIRED.some((k) => k in raw)) { RETIRED.forEach((k) => delete raw[k]); write(K.settings, raw); }
+    return { ...DEFAULT_SETTINGS, ...raw };
+  },
   saveSettings(patch) { const s = { ...this.settings(), ...patch }; write(K.settings, s); return s; },
 
   // Macros use the targets you set. Everything else uses the Dietary Reference Intakes for your
@@ -221,12 +227,13 @@ export const store = {
 
   log() { return read(K.log, {}); },
   day(date) { return (this.log()[date] || []).slice().sort((a, b) => a.ts - b.ts); },
-  addEntry(date, entry) {
+  // keepOrder: a copied food keeps its place from the day it came from.
+  addEntry(date, entry, { keepOrder = false } = {}) {
     const log = this.log();
     const e = { id: 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...entry };
     // In a meal you've rearranged, new foods go to the bottom.
     const orders = (log[date] || []).filter((x) => x.meal === e.meal && x.order != null).map((x) => x.order);
-    if (orders.length) e.order = Math.max(...orders) + 1; else delete e.order;
+    if (keepOrder && e.order != null) { /* keep it */ } else if (orders.length) e.order = Math.max(...orders) + 1; else delete e.order;
     (log[date] = log[date] || []).push(e);
     write(K.log, log);
     const f = this.food(entry.foodId);
@@ -249,10 +256,16 @@ export const store = {
     (log[date] || []).forEach((e) => { if (e.meal === meal) { const i = ids.indexOf(e.id); if (i >= 0) e.order = i; } });
     write(K.log, log);
   },
+  // Copies a meal in the order you see it: foods already in that meal on the other day stay first, the copies follow.
   copyMeal(fromDate, meal, toDate) {
     const items = sortMeal(this.day(fromDate).filter((e) => e.meal === meal));
     const dayShift = new Date(toDate + 'T00:00:00').getTime() - new Date(fromDate + 'T00:00:00').getTime();
-    items.forEach((e) => this.addEntry(toDate, { foodId: e.foodId, grams: e.grams, unit: e.unit, qty: e.qty, meal: e.meal, ts: e.ts + dayShift }));
+    const log = this.log();
+    const there = sortMeal((log[toDate] || []).filter((e) => e.meal === meal));
+    there.forEach((e, i) => { e.order = i; });
+    const stamp = Date.now().toString(36);
+    items.forEach((e, i) => (log[toDate] = log[toDate] || []).push({ id: 'e' + stamp + i + Math.random().toString(36).slice(2, 5), foodId: e.foodId, grams: e.grams, unit: e.unit, qty: e.qty, meal: e.meal, ts: e.ts + dayShift, order: there.length + i }));
+    write(K.log, log);
     return items.length;
   },
   clearMeal(date, meal) {

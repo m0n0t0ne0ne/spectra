@@ -1,5 +1,5 @@
 // The nutrient prompt: the user's Cronometer-style request plus a strict line format the app can read back.
-// Used by the Ask Gemini button (Gemini app) and by the page-reading lookup (Gemini API).
+// Used by the Ask Gemini button (Gemini app).
 import { isPlaceholderServing } from './api.js';
 import { fmt } from './nutrients.js';
 

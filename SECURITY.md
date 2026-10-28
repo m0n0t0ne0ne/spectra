@@ -11,14 +11,14 @@ Please **don't** open a public issue. Use GitHub's private reporting: **Security
 ## How Spectra is protected
 
 **Data on the phone**
-- All user data (diary, foods, weights, settings, API keys) is stored in app-private files. Writes are atomic (`AtomicFile`), so a crash can't leave half-written data.
+- All user data (diary, foods, weights, settings, USDA key) is stored in app-private files. Writes are atomic (`AtomicFile`), so a crash can't leave half-written data.
 - `allowBackup="false"` plus data-extraction rules exclude everything from cloud backup and device transfer.
-- API keys are never written to exports.
+- The USDA key is never written to exports.
 
 **Network**
 - Cleartext traffic is disabled; only HTTPS is used.
 - The web app is served from `https://appassets.androidplatform.net` through `WebViewAssetLoader`, with file and content access in the WebView turned off.
-- A Content Security Policy allows scripts only from the app itself and network requests only to Open Food Facts, USDA, the Gemini API and the Claude API. Fonts and the scanner library are bundled; there are no CDNs.
+- A Content Security Policy allows scripts only from the app itself and network requests only to Open Food Facts, USDA and UPCitemdb. Fonts and the scanner library are bundled; there are no CDNs.
 - Links can only open `http(s)` pages in the browser; other URL schemes are blocked.
 
 **Builds and releases**

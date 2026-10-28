@@ -1,10 +1,10 @@
 import { NUTRIENTS, BY_KEY, GROUPS, fmt, deriveTotals } from './nutrients.js';
 import { storageUsage, exportData, importPreview, importData, dataBreakdown, deleteDiaryMonths, deleteBodyMonths, deleteFoods } from './store.js';
 import { store, sortMeal, energyTargetFor, totals, coverage, todayISO, ACTIVITY_LEVELS, ACTIVITY_TYPES, bmrFor, dayEnergy, activityKcal } from './store.js';
-import { fdcSearch, hasAI, aiName, askAI, isPlaceholderServing } from './api.js';
+import { fdcSearch, isPlaceholderServing } from './api.js';
 import { lookupBarcode, foodFromSearchHit } from './pipeline.js';
 import { startScanner, stopScanner, decodeImageFile } from './scanner.js';
-import { parseLocal, parseWithAI, detectBasis, firstUrl, servingFromText } from './paste.js';
+import { parseLocal, detectBasis, firstUrl, servingFromText } from './paste.js';
 import { foodTile, foodKind, FOOD_KINDS } from './foodicon.js';
 import { insightsHTML } from './insights.js';
 import { geminiNutrientPrompt } from './prompts.js';
@@ -18,29 +18,36 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 const view = () => $('#main');
 // Inside the Android app the native layer provides AndroidBridge (Google barcode scanner, file saving).
 const NATIVE = typeof window.AndroidBridge !== 'undefined';
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.3';
 const SITE = 'https://m0n0t0ne0ne.github.io/spectra/';
 const appVersion = () => { try { return (NATIVE && window.AndroidBridge.appVersion?.()) || APP_VERSION; } catch { return APP_VERSION; } };
 // Text shared to the app (Gemini's answer → Share → Spectra) opens the paste sheet for the food you asked about.
-// For a barcode we couldn't find: take the name and serving size from Gemini's "Product:" / "Serving size:" lines.
+// Gemini's "Product: Brand – Name" and "Serving size:" lines fill whatever the scan couldn't: a barcode nobody knew
+// gets its name, brand and serving; a scanned product missing its name or brand gets just those.
+const placeholderName = (n) => !n || /^(barcode \d+|unnamed product|new food)$/i.test(n.trim());
 function identifyFromText(food, text) {
   const clean = (x) => x.replace(/[*_#`]/g, '').trim();
   const prod = text.match(/^[\s*_#-]*product\s*:\s*(.+)$/im);
   const serv = text.match(/^[\s*_#-]*serving size\s*:\s*(.+)$/im);
-  const patch = { unidentified: !prod && food.unidentified };
+  const patch = {};
   if (prod) {
-    patch.unidentified = false;
-    const [brand, ...rest] = clean(prod[1]).split(/\s+[–—-]\s+/);
-    if (rest.length) { patch.brand = brand.trim(); patch.name = rest.join(' – ').trim(); } else patch.name = brand.trim();
+    const [first, ...rest] = clean(prod[1]).split(/\s+[–—-]\s+/);
+    const brand = rest.length ? first.trim() : '';
+    const name = (rest.length ? rest.join(' – ') : first).trim();
+    if (name && (food.unidentified || placeholderName(food.name))) patch.name = name;
+    if (brand && (food.unidentified || !food.brand)) patch.brand = brand;
+    if (food.unidentified) patch.unidentified = false;
   }
-  if (serv) {
+  if (serv && (food.unidentified || !(food.servings || []).some((x) => x.grams > 0 && !isPlaceholderServing(x)))) {
     const g = clean(serv[1]).match(/(\d+(?:\.\d+)?)\s*(g|grams?)\b/i);
     if (g) {
       const label = clean(serv[1]).replace(/\s*\(\s*\d+(?:\.\d+)?\s*(g|grams?)\s*\)\s*/i, '').trim() || 'Serving';
-      patch.servings = [{ label: `${label} (${+Number(g[1]).toFixed(2)} g)`, grams: Number(g[1]) }];
+      patch.servings = [{ label: `${label} (${+Number(g[1]).toFixed(2)} g)`, grams: Number(g[1]) }, ...(food.servings || [])];
     }
   }
-  patch.sources = [...(food.sources || []), { kind: 'label', title: 'Product info: Gemini app', count: 0, note: 'Identified from the barcode by Gemini' }];
+  if (!Object.keys(patch).length) return food;
+  const what = [patch.name && 'name', patch.brand && 'brand', patch.servings && 'serving size'].filter(Boolean);
+  if (what.length) patch.sources = [...(food.sources || []), { kind: 'label', title: 'Product info: Gemini app', count: 0, note: `${what.join(', ').replace(/^./, (c) => c.toUpperCase())} from Gemini’s answer` }];
   return store.saveFood({ ...store.food(food.id), ...patch });
 }
 
@@ -49,7 +56,7 @@ window.__onSharedText = (text) => {
   let food = (s.askedFood && store.food(s.askedFood)) || store.recentFoods(1)[0];
   if (!food || !text) return;
   if (/^\s*https?:\/\/\S+\s*$/.test(String(text))) { toast('Gemini shared a link, not the answer. In Gemini, long-press the answer and choose Copy, then use Paste answer.'); return; }
-  if (food.unidentified) food = identifyFromText(food, String(text));
+  food = identifyFromText(food, String(text));
   location.hash = `#/food/${encodeURIComponent(food.id)}`;
   setTimeout(() => { openPaste(food); ui.paste.text = String(text); renderPaste(); }, 120);
 };
@@ -666,14 +673,14 @@ function renderDay(date) {
   <section class="screen col" style="gap:10px">
     ${store.meals().map(({ key: k }, i, all) => mealCard(date, k, sortMeal(entries.filter((e) => e.meal === k)), i, all.length)).join('')}
   </section>
-  ${!entries.length ? `<div class="screen mt16"><div class="note">${date === todayISO() ? 'Nothing logged yet today.' : 'Nothing logged this day.'} Tap + on a meal to search, scan or create a food.${hasAI() ? '' : ' Add a Gemini or Claude key under Targets to fill in the nutrients labels leave out.'}</div></div>` : ''}`;
+  ${!entries.length ? `<div class="screen mt16"><div class="note">${date === todayISO() ? 'Nothing logged yet today.' : 'Nothing logged this day.'} Tap + on a meal to search, scan or create a food.</div></div>` : ''}`;
 }
 
 /* ---------------- Scan ---------------- */
 
 const STEP_INFO = [
   { id: 'info', title: 'Product info', idle: 'Name and serving size from the barcode' },
-  { id: 'nutrients', title: 'Nutrients', idle: () => `${hasAI() ? aiName() : 'Gemini'} reads the label, then spec sheet, then USDA lab data` }
+  { id: 'nutrients', title: 'Nutrients', idle: 'Label values from the barcode databases' }
 ];
 // Foods picked from USDA search still show where their lab data came from.
 const SEARCH_STEPS = [
@@ -743,7 +750,7 @@ const FOOD_GROUPS = [
   ['grains', 'Grains', ['grain', 'bread']],
   ['nuts', 'Nuts & seeds', ['nuts']],
   ['snacks', 'Snacks', ['snack', 'sweets']],
-  ['pantry', 'Pantry', ['oil', 'sauce', 'soup', 'meal']],
+  ['pantry', 'Pantry', ['oil', 'sauce', 'herbs', 'soup', 'meal']],
   ['drinks', 'Drinks', ['coffee', 'drink']],
   ['supps', 'Supplements', ['supplement']]
 ];
@@ -861,34 +868,6 @@ function loggedFoods() {
 }
 
 
-function testKeyHTML() {
-  return `<div class="row" style="gap:12px;align-items:center"><button class="btn quiet" data-act="test-ai" style="flex:none">Test key</button><span class="s13 muted" id="test-ai-out" style="line-height:1.4"></span></div>`;
-}
-async function testAI(btn) {
-  const out = $('#test-ai-out');
-  const el = document.activeElement; if (el?.dataset?.setting) el.blur();
-  if (!hasAI()) { out.textContent = 'Paste a key first.'; return; }
-  btn.disabled = true; out.style.color = ''; out.textContent = `Asking ${aiName()}…`;
-  const classic = store.settings().lookupMode === 'classic';
-  try {
-    // One small request without web search: does the key work at all?
-    const r = await askAI({ system: 'Answer in one word.', prompt: 'Reply with the word OK.', maxTokens: 50, onWait: (sec) => { out.textContent = `Waiting ${sec} s: Gemini asked to slow down…`; } });
-    let note = `Working${r.model ? ` · ${r.model}` : ''}.`;
-    // AI web search only matters for the 1.0.1 method.
-    if (classic) {
-      try {
-        const w = await askAI({ system: 'Answer in a few words.', prompt: 'Use web search to find the brand of the product with UPC 012000161155, and reply with just the brand name.', search: true, maxTokens: 200 });
-        note += w.searched === false ? ' Web search isn’t allowed on this key, so AI web search lookups will use estimates.' : ' Web search works.';
-      } catch (e) { note += ` Web search: ${e.message}`; }
-    }
-    out.style.color = 'var(--lilac)';
-    out.textContent = note;
-  } catch (e) {
-    out.style.color = 'var(--rose)';
-    out.textContent = e.message;
-  } finally { btn.disabled = false; }
-}
-
 async function runLookup(code) {
   const s = ui.scan;
   if (!s) return;
@@ -912,7 +891,7 @@ async function runLookup(code) {
     if (ui.scan !== s) return;
     s.status = 'error';
     $('#scan-err').innerHTML = `<div class="err mt12">${e.code === 'not_found'
-      ? `We couldn’t find barcode ${esc(code)}. ${e.detail ? esc(e.detail) + ' ' : hasAI() ? '' : 'Adding a Gemini or Claude key lets the app search the web for it. '}You can search by name or add it as a custom food.`
+      ? `We couldn’t find barcode ${esc(code)}. You can ask the Gemini app about it, search by name or add it as a custom food.`
       : esc(e.message)}</div>
       ${e.code === 'not_found' ? `${NATIVE ? `<button class="btn primary block mt12" data-act="ask-gemini-barcode" data-code="${esc(code)}">✦ Ask the Gemini app about this barcode</button>` : ''}
       <div class="row mt8" style="gap:8px"><button class="btn tint" style="flex:1" data-act="barcode-paste" data-code="${esc(code)}">Paste answer</button><button class="btn quiet" style="flex:1" data-act="barcode-custom" data-code="${esc(code)}">Enter it yourself</button></div>
@@ -1074,6 +1053,12 @@ function renderFood(r, changed) {
     <label class="field">Name<input class="input" id="nm-name" value="${esc(food.unidentified ? '' : food.name)}" placeholder="e.g. Vitamin D3 1000 IU Softgels" enterkeyhint="next"></label>
     <label class="field">Brand<input class="input" id="nm-brand" value="${esc(food.brand || '')}" placeholder="Optional" enterkeyhint="done"></label>
     <div class="row" style="gap:8px"><button class="btn quiet" style="flex:1" data-act="name-cancel">Cancel</button><button class="btn tint" style="flex:1" data-act="name-save">Save</button></div>
+  </div></section>` : ''}
+  ${!total && !ui.add?.editName ? `<section class="screen mt16"><div class="card pad col" style="gap:10px">
+    <span class="s15 b6">No nutrition data yet</span>
+    <span class="s13 muted" style="line-height:1.45">${NATIVE ? 'Ask Gemini about this product, then share or paste its answer back. The name, brand and serving size fill in too if they’re missing.' : 'Paste the nutrition facts from the label or the brand’s website.'}</span>
+    ${NATIVE ? `<button class="btn primary block" data-act="ask-gemini" data-id="${esc(food.id)}">✦ Ask Gemini</button>` : ''}
+    <button class="btn tint block" data-act="paste-open" data-id="${esc(food.id)}">Paste answer</button>
   </div></section>` : ''}
 
   <section class="screen mt16"><div class="card pad col" style="gap:16px">
@@ -1366,25 +1351,7 @@ function renderSettings() {
 
   <section class="screen mt24"><h2 class="h2">Data sources</h2>
     <div class="card pad col mt12" style="gap:14px">
-      <p class="s13 muted" style="margin:0;line-height:1.5">A scan gets the product name and serving size from the barcode. The AI you pick then fills every nutrient for one serving: the package label first, then the manufacturer’s spec sheet, then USDA lab data for a generic version, and only then a marked estimate. Labels round (calcium under 2% of the Daily Value can be printed as 0 mg), so when a precise spec-sheet or lab value rounds to what the label prints, the precise value is kept. It uses your own API key, which stays on this device.</p>
-      <div class="col" style="gap:8px"><span class="s13 muted">Look up foods with</span>
-        <div class="seg" role="group" aria-label="AI provider">${[['gemini', 'Gemini'], ['claude', 'Claude']].map(([v, l]) => `<button class="chip" data-act="provider" data-v="${v}" aria-pressed="${(s.provider || (s.geminiKey || !s.claudeKey ? 'gemini' : 'claude')) === v}">${l}</button>`).join('')}</div></div>
-      ${(s.provider || (s.geminiKey || !s.claudeKey ? 'gemini' : 'claude')) === 'gemini' ? `
-      <label class="field">Gemini API key<input class="input" type="password" autocomplete="off" data-setting="geminiKey" value="${esc(s.geminiKey)}" placeholder="From aistudio.google.com"></label>
-      <label class="field">Gemini model
-        <select class="input" data-setting="geminiModel">${[['gemini-3.8-flash', 'Gemini 3.8 Flash (more thorough)'], ['gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite (many more requests a day)']].map(([v, l]) => `<option value="${v}" ${(s.geminiModel || 'gemini-3.8-flash') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      <p class="small faint" style="margin:0;line-height:1.5">Create a free key at aistudio.google.com › Get API key. A Gemini app subscription doesn’t include API access. On a free key, Flash-Lite allows many more requests a day than Flash; aistudio.google.com/rate-limit shows yours.</p>${testKeyHTML()}` : `
-      <label class="field">Claude API key<input class="input" type="password" autocomplete="off" data-setting="claudeKey" value="${esc(s.claudeKey)}" placeholder="sk-ant-…"></label>
-      <label class="field">Claude model
-        <select class="input" data-setting="model">${[['claude-sonnet-5-5', 'Sonnet 5.5 (balanced)'], ['claude-haiku-5-5', 'Haiku 5.5 (faster, cheaper)'], ['claude-opus-5-5', 'Opus 5.5 (most thorough)']].map(([v, l]) => `<option value="${v}" ${s.model === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      <p class="small faint" style="margin:0">Create a key at console.anthropic.com.</p>${testKeyHTML()}`}
-      <div class="field"><span>How new products get their nutrients</span>
-        <div class="seg" role="group" aria-label="Lookup method" style="margin-top:6px">${[['pages', 'Read brand pages'], ['classic', 'AI web search']].map(([v, l]) => `<button class="chip" data-act="lookup-mode" data-v="${v}" aria-pressed="${(s.lookupMode === 'classic' ? 'classic' : 'pages') === v}">${l}</button>`).join('')}</div></div>
-      <p class="small faint" style="margin:0;line-height:1.5">${s.lookupMode === 'classic'
-        ? 'The 1.0.1 method: the AI searches the web itself. Up to 2 requests per new product, and free Gemini keys may not allow web search (Spectra then asks again without it).'
-        : 'Spectra finds the product’s own pages (brand site and retailers), and the AI reads them: 1 request per new product, no AI web search, works on free keys.'}</p>
-      ${s.lookupMode === 'classic' ? '' : `<label class="field">Brave Search API key<input class="input" type="password" autocomplete="off" data-setting="braveKey" value="${esc(s.braveKey || '')}" placeholder="Optional. Uses DuckDuckGo if empty"></label>
-      <p class="small faint" style="margin:0;line-height:1.5">Brave finds pages more reliably. Free key at api-dashboard.search.brave.com. Without one, Spectra uses DuckDuckGo, which may stop working without notice.</p>`}
+      <p class="s13 muted" style="margin:0;line-height:1.5">A scan gets the product’s name, brand, serving size and label values from Open Food Facts and USDA, or the name and brand from UPCitemdb. For every other nutrient, open the food and tap Ask Gemini, then paste the answer.</p>
       <label class="field">USDA FoodData Central key<input class="input" autocomplete="off" data-setting="fdcKey" value="${esc(s.fdcKey)}" placeholder="Optional. Uses the shared demo key if empty"></label>
       <p class="small faint" style="margin:0">Get a free USDA key at api.data.gov/signup. The demo key is limited to a few dozen lookups an hour.</p>
     </div>
@@ -1405,7 +1372,7 @@ function renderSettings() {
       <a class="item s15 spread" href="${SITE}privacy.html" target="_blank" rel="noopener" style="padding:16px 0">Privacy <span class="muted">${I.next}</span></a>
       <a class="item s15 spread" href="https://github.com/m0n0t0ne0ne/spectra" target="_blank" rel="noopener" style="padding:16px 0">Source code and releases <span class="muted">${I.next}</span></a>
     </div>
-    <p class="small faint mt12" style="line-height:1.5">Your diary, foods and API keys stay on this phone. Food lookups go to Open Food Facts and USDA; AI lookups go to Gemini or Claude with your own key.</p>
+    <p class="small faint mt12" style="line-height:1.5">Your diary and foods stay on this phone. Food lookups go to Open Food Facts, USDA and UPCitemdb; Ask Gemini opens the Gemini app, where you see the question before sending.</p>
   </section>`;
 }
 
@@ -2078,7 +2045,7 @@ function renderPaste() {
         </div>` : ''}
         <span class="small faint">If the text says, the app uses that instead.</span></div>
       ${p.error ? `<div class="err mt12">${esc(p.error)}</div>` : ''}
-      <button class="btn primary block mt16" data-act="paste-read" ${p.busy ? 'disabled' : ''}>${p.busy ? (hasAI() ? aiName() + ' is reading it…' : 'Reading…') : 'Read nutrients'}</button>`
+      <button class="btn primary block mt16" data-act="paste-read" ${p.busy ? 'disabled' : ''}>${p.busy ? 'Reading…' : 'Read nutrients'}</button>`
     : `
       ${plan.rows.some((r) => r.comp) ? `<p class="small muted" style="margin:0 0 10px;line-height:1.45">Values from a comparable product are saved as estimates (est.) and never replace label or spec-sheet values.</p>` : plan.rows.some((r) => r.lab) ? `<p class="small muted" style="margin:0 0 10px;line-height:1.45">Lab values come from a generic version of this food and never replace label or spec-sheet values.</p>` : ''}
       <div class="spread"><span class="s14 b6">${plan.rows.length} nutrients found</span><span class="s13 muted">per ${fmt(p.basis)} g · ${esc(p.result.method)}</span></div>
@@ -2107,28 +2074,13 @@ async function readPaste() {
   if (!p.text.trim()) { p.error = 'Paste some text first.'; renderPaste(); return; }
   if (/^\s*https?:\/\/\S+\s*$/.test(p.text)) { p.error = 'That’s a link to the chat, not the answer. In Gemini, long-press the answer (or tap ⋮) and choose Copy, then paste here.'; renderPaste(); return; }
   let food = store.food(p.foodId);
-  if (food.unidentified) {
-    food = identifyFromText(food, p.text);
-    const sv = food.servings?.[0];
-    if (sv && !/per\s*100\s*g/i.test(p.text)) p.basis = sv.grams;
-  }
+  const hadServing = (food.servings || []).length;
+  food = identifyFromText(food, p.text);
+  const sv = food.servings?.[0];
+  if (sv && (food.servings.length > hadServing) && !/per\s*100\s*g/i.test(p.text)) p.basis = sv.grams;
   p.busy = true; p.error = ''; renderPaste();
-  let result = null;
-  // A reply in the "Nutrient: number unit" format asked for by the Gemini prompt is read on the device:
-  // exact and instant. Anything messier goes to the AI reader.
-  const quick = parseLocal(p.text);
-  // Read on the phone whenever that finds the nutrients: instant, and no Gemini quota used.
-  if (Object.keys(quick.nutrients).length >= 5) {
-    result = { nutrients: quick.nutrients, comparable: quick.comparable, lab: quick.lab, basis: detectBasis(p.text), url: firstUrl(p.text), method: 'read on device' };
-  }
-  if (!result) try {
-    const ai = await Promise.race([parseWithAI(p.text, food), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 25000))]);
-    if (ai && Object.keys(ai.nutrients).length) result = { ...ai, method: `read by ${aiName()}` };
-  } catch (e) { /* fall back to the offline reader */ }
-  if (!result) {
-    const local = parseLocal(p.text);
-    result = { nutrients: local.nutrients, comparable: local.comparable, lab: local.lab, basis: detectBasis(p.text), url: firstUrl(p.text), method: 'read on device' };
-  }
+  const local = parseLocal(p.text);
+  const result = { nutrients: local.nutrients, comparable: local.comparable, lab: local.lab, basis: detectBasis(p.text), url: firstUrl(p.text), method: 'read on device' };
   if (!result.url) result.url = firstUrl(p.text);
   p.textServing = /per\s*100\s*(g|grams)\b/i.test(p.text) ? null : servingFromText(p.text);
   if (result.basis) p.basis = result.basis;
@@ -2215,7 +2167,8 @@ document.addEventListener('click', async (ev) => {
       if (act === 'entry-copy') {
         const to = from === todayISO() ? shiftDate(from, 1) : todayISO();
         const shift = new Date(to + 'T00:00:00').getTime() - new Date(from + 'T00:00:00').getTime();
-        store.addEntry(to, { ...rest, ts: e.ts + shift });
+        // Keep its place in the meal: its position in the day's order, not its time.
+        store.addEntry(to, { ...rest, ts: e.ts + shift, ...(order != null ? { order } : {}) }, { keepOrder: true });
         toast(`Copied to ${to === todayISO() ? 'today' : 'tomorrow'}`);
       } else {
         store.addEntry(from, { ...rest, ts: Date.now() });
@@ -2463,9 +2416,6 @@ document.addEventListener('click', async (ev) => {
     case 'act-delete': store.removeActivity(ui.act.date, ui.act.id); closeActivity(); render(); toast('Activity removed'); break;
     case 'profile-set': store.saveProfile({ [el.dataset.k]: el.dataset.v }); render(); break;
     case 'weight-del': store.setWeight(el.dataset.d, ''); render(); break;
-    case 'provider': store.saveSettings({ provider: el.dataset.v }); render(); break;
-    case 'lookup-mode': store.saveSettings({ lookupMode: el.dataset.v }); render(); toast(el.dataset.v === 'classic' ? 'Using AI web search (1.0.1 method)' : 'Reading brand pages'); break;
-    case 'test-ai': testAI(el); break;
     case 'ask-gemini': askGeminiApp(store.food(el.dataset.id)); break;
     case 'ask-gemini-barcode': askGeminiApp(barcodeFood(el.dataset.code)); break;
     case 'native-scan':
@@ -2803,53 +2753,76 @@ async function showLookupSheet(hit, date, meal) {
 /* ---------------- long-press a food in the diary to move it up or down its meal ---------------- */
 
 let hold = null, swallowEntryClick = false;
+// Each food sits in its own swipe wrapper (.entry-head). Those wrappers are what move: the dragged one follows the
+// finger above the others, and the rest slide up or down one place as it passes them, so every food stays visible.
 document.addEventListener('pointerdown', (ev) => {
   const row = ev.target.closest?.('.entry-row');
   if (!row || ev.button > 0) return;
   const list = row.closest('.entry-list');
   if (!list || list.querySelectorAll('.entry-row').length < 2) return;
-  hold = { row, list, startX: ev.clientX, startY: ev.clientY, pointerId: ev.pointerId, active: false };
+  hold = { row, list, startX: ev.clientX, startY: ev.clientY, y: ev.clientY, pointerId: ev.pointerId, active: false };
   hold.timer = setTimeout(startReorder, 420);
 });
 function startReorder() {
   const h = hold;
   if (!h) return;
   h.active = true;
-  h.rows = [...h.list.querySelectorAll('.entry-row')];
-  h.idx = h.rows.indexOf(h.row);
+  h.items = [...h.list.querySelectorAll(':scope > .entry-head')];
+  h.item = h.row.closest('.entry-head');
+  h.idx = h.items.indexOf(h.item);
   h.newIdx = h.idx;
-  h.mids = h.rows.map((r) => { const b = r.getBoundingClientRect(); return b.top + b.height / 2; });
-  h.rowH = h.row.getBoundingClientRect().height;
+  const boxes = h.items.map((el) => el.getBoundingClientRect());
+  h.tops = boxes.map((r) => r.top + scrollY);
+  h.heights = boxes.map((r) => r.height);
+  h.scroll0 = scrollY;
   h.list.classList.add('reordering');
-  h.row.classList.add('lifted');
-  h.row.style.transform = 'scale(1.02)';
+  h.item.classList.add('lifted');
   try { h.row.setPointerCapture(h.pointerId); } catch { /* ignore */ }
   try { navigator.vibrate?.(12); } catch { /* ignore */ }
+  h.raf = requestAnimationFrame(autoScroll);
+}
+// Where the dragged food would land, and how far each other food moves to make room.
+function layoutReorder(h) {
+  const dy = h.y - h.startY + (scrollY - h.scroll0);
+  h.item.style.transform = `translateY(${dy}px)`;
+  const center = h.tops[h.idx] + h.heights[h.idx] / 2 + dy;
+  let n = 0;
+  h.items.forEach((el, i) => { if (i !== h.idx && h.tops[i] + h.heights[i] / 2 < center) n++; });
+  h.newIdx = n;
+  const H = h.heights[h.idx];
+  h.items.forEach((el, i) => {
+    if (i === h.idx) return;
+    const shift = h.idx < n && i > h.idx && i <= n ? -H : h.idx > n && i < h.idx && i >= n ? H : 0;
+    el.style.transform = shift ? `translateY(${shift}px)` : '';
+  });
+}
+// Near the top or bottom of the screen, scroll so a food can be dragged past what's visible.
+function autoScroll() {
+  const h = hold;
+  if (!h?.active) return;
+  const edge = 90, bottom = innerHeight - (document.querySelector('nav.tabs')?.offsetHeight || 0);
+  const v = h.y < edge ? -(edge - h.y) / 6 : h.y > bottom - edge ? (h.y - (bottom - edge)) / 6 : 0;
+  if (v) { scrollBy(0, Math.max(-14, Math.min(14, v))); layoutReorder(h); }
+  h.raf = requestAnimationFrame(autoScroll);
+}
+function clearReorder(h) {
+  cancelAnimationFrame(h.raf);
+  h.items?.forEach((el) => { el.style.transform = ''; });
+  h.item?.classList.remove('lifted', 'settling');
+  h.list.classList.remove('reordering');
 }
 function cancelHold() {
   if (!hold) return;
   clearTimeout(hold.timer);
-  if (hold.active) {
-    hold.rows.forEach((r) => { r.style.transform = ''; });
-    hold.row.classList.remove('lifted');
-    hold.list.classList.remove('reordering');
-  }
+  if (hold.active) clearReorder(hold);
   hold = null;
 }
 document.addEventListener('pointermove', (ev) => {
   const h = hold;
   if (!h || ev.pointerId !== h.pointerId) return;
   if (!h.active) { if (Math.hypot(ev.clientX - h.startX, ev.clientY - h.startY) > 8) cancelHold(); return; }
-  const dy = ev.clientY - h.startY;
-  h.row.style.transform = `translateY(${dy}px) scale(1.02)`;
-  const center = h.mids[h.idx] + dy;
-  const n = h.mids.filter((m, i) => i !== h.idx && m < center).length;
-  h.newIdx = n;
-  h.rows.forEach((r, i) => {
-    if (i === h.idx) return;
-    const shift = h.idx < n && i > h.idx && i <= n ? -h.rowH : h.idx > n && i < h.idx && i >= n ? h.rowH : 0;
-    r.style.transform = shift ? `translateY(${shift}px)` : '';
-  });
+  h.y = ev.clientY;
+  layoutReorder(h);
 });
 // Keep the page from scrolling while a food is being dragged.
 document.addEventListener('touchmove', (ev) => { if (hold?.active) ev.preventDefault(); }, { passive: false });
@@ -2860,20 +2833,26 @@ function endHold(ev) {
   if (!h || (ev.pointerId != null && ev.pointerId !== h.pointerId)) return;
   if (!h.active || ev.type === 'pointercancel') { cancelHold(); return; }
   clearTimeout(h.timer);
+  cancelAnimationFrame(h.raf);
   hold = null;
   swallowEntryClick = true;
   setTimeout(() => { swallowEntryClick = false; }, 400);
-  const ids = h.rows.map((r) => r.dataset.eid);
-  const [moved] = ids.splice(h.idx, 1);
-  ids.splice(h.newIdx, 0, moved);
-  if (h.newIdx !== h.idx) {
-    store.reorderMeal(h.list.dataset.date, h.list.dataset.meal, ids);
-    render();
-  } else {
-    h.rows.forEach((r) => { r.style.transform = ''; });
-    h.row.classList.remove('lifted');
-    h.list.classList.remove('reordering');
-  }
+  // Glide into the gap, then save the new order.
+  const H = h.heights;
+  let target = 0;
+  if (h.newIdx > h.idx) for (let i = h.idx + 1; i <= h.newIdx; i++) target += H[i];
+  else for (let i = h.newIdx; i < h.idx; i++) target -= H[i];
+  h.item.classList.add('settling');
+  h.item.style.transform = `translateY(${target}px)`;
+  setTimeout(() => {
+    if (h.newIdx !== h.idx) {
+      const ids = h.items.map((el) => el.dataset.eid);
+      const [moved] = ids.splice(h.idx, 1);
+      ids.splice(h.newIdx, 0, moved);
+      store.reorderMeal(h.list.dataset.date, h.list.dataset.meal, ids);
+      render();
+    } else clearReorder(h);
+  }, 190);
 }
 document.addEventListener('pointerup', endHold);
 document.addEventListener('pointercancel', endHold);

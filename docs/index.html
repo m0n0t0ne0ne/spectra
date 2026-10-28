@@ -354,14 +354,13 @@ footer a{color:var(--text-2);text-decoration:none}footer a:hover{color:var(--tex
         </ol>
       </details>
 
-      <details><summary><span class="n">3</span>Add a free Gemini key (recommended)</summary>
-        <p>Labels leave out most vitamins and minerals. With a key, Spectra looks them up for each new product.</p>
+      <details><summary><span class="n">3</span>Optional: add a free USDA key</summary>
+        <p>Searching USDA works without one, but the shared demo key allows only a few dozen lookups an hour.</p>
         <ol>
-          <li>Go to <b>aistudio.google.com</b>, sign in, and choose <b>Get API key</b>. The free tier is enough for personal use; a Gemini app subscription doesn't include API access.</li>
-          <li>In Spectra, open <b>Targets → Data sources</b>, paste the key, and tap <b>Test key</b>.</li>
-          <li>Optional: add a free USDA key from <b>api.data.gov/signup</b> for faster searches.</li>
+          <li>Go to <b>api.data.gov/signup</b>, enter your name and email, and copy the key from the email.</li>
+          <li>In Spectra, open <b>Targets → Data sources</b> and paste it into <b>USDA FoodData Central key</b>.</li>
         </ol>
-        <p>Keys are stored only on your phone and are never included in exports.</p>
+        <p>The key is stored only on your phone and is never included in exports.</p>
       </details>
 
       <details><summary><span class="n">4</span>Log a food</summary>
@@ -432,7 +431,7 @@ footer a{color:var(--text-2);text-decoration:none}footer a:hover{color:var(--tex
         <ol>
           <li>In the old app, open <b>Targets → Your data → Export → Everything</b>.</li>
           <li>Install Spectra. It installs alongside the old app.</li>
-          <li>In Spectra, <b>Targets → Your data → Import</b>, pick the file, tap <b>Import</b>. Re-enter your API keys (they're never exported).</li>
+          <li>In Spectra, <b>Targets → Your data → Import</b>, pick the file, tap <b>Import</b>. Re-enter your USDA key if you use one (keys are never exported).</li>
           <li>When everything looks right, uninstall the old app.</li>
         </ol>
       </details>
@@ -455,7 +454,7 @@ footer a{color:var(--text-2);text-decoration:none}footer a:hover{color:var(--tex
     <p class="sub">No account, no analytics, no ads. <a href="privacy.html">Read the full privacy policy.</a></p>
     <div class="grid3">
       <div class="card"><h3>Stays on your phone</h3><p>Your diary, foods, weights and keys live in the app's private storage. They're excluded from Android cloud backup and device transfer; move them only with Export.</p></div>
-      <div class="card"><h3>Only what's needed leaves</h3><p>Barcode numbers and product names go to Open Food Facts, USDA and UPCitemdb, and to DuckDuckGo or Brave to find the product's own pages. AI questions go to Gemini or Claude with your own key. Nothing else is sent anywhere.</p></div>
+      <div class="card"><h3>Only what's needed leaves</h3><p>Barcode numbers and product names go to Open Food Facts, USDA and UPCitemdb. Ask Gemini hands a question to the Gemini app, where you see it before sending. Nothing else is sent anywhere.</p></div>
       <div class="card"><h3>Locked down</h3><p>Encrypted connections only, a strict content policy that blocks third-party scripts, and links that can only open web pages. The source code is public.</p></div>
     </div>
   </div>
@@ -477,7 +476,7 @@ footer a{color:var(--text-2);text-decoration:none}footer a:hover{color:var(--tex
   <div class="wrap">
     <h2>Questions</h2>
     <div class="howto" style="margin-top:20px">
-      <details><summary>Is it free?</summary><p>Yes. Spectra is free with no ads or subscriptions. Gemini's free tier covers personal use; if you use Claude instead, Anthropic bills your own API account.</p></details>
+      <details><summary>Is it free?</summary><p>Yes. Spectra is free with no ads or subscriptions. Ask Gemini uses the free Gemini app on your phone; no API key needed.</p></details>
       <details><summary>Does it work offline?</summary><p>Logging foods you've saved, the diary, Report and Insights all work offline. Looking up new products needs a connection.</p></details>
       <details><summary>Why not just use the label?</summary><p>US labels only require a handful of nutrients and round small amounts to 0. Spectra keeps the label's numbers and adds the rest from spec sheets and lab data, each marked with its source.</p></details>
       <details><summary>Is it on Google Play or iPhone?</summary><p>Not yet. Version 1.0 is a direct Android download. The app is a web app inside an Android shell, so other platforms are possible later.</p></details>

@@ -414,8 +414,9 @@ export function dayEnergy(date, consumedKcal = 0) {
   if (bmr == null) return { ready: false, activities: acts };
   const baseline = bmr * (ACTIVITY_LEVELS[p.activity]?.f ?? 0.2);
   const tef = p.tef ? consumedKcal * 0.1 : 0;
-  const burned = bmr + baseline + acts + tef;
-  return { ready: true, bmr, baseline, activities: acts, tef, burned, balance: consumedKcal - burned };
+  // Whole calories, so burned, balance and "over target" shown side by side always add up.
+  const burned = Math.round(bmr + baseline + acts + tef);
+  return { ready: true, bmr, baseline, activities: acts, tef, burned, balance: Math.round(consumedKcal) - burned };
 }
 
 // Today's calorie target: your target plus the calories from workouts you logged that day,

@@ -18,7 +18,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 const view = () => $('#main');
 // Inside the Android app the native layer provides AndroidBridge (Google barcode scanner, file saving).
 const NATIVE = typeof window.AndroidBridge !== 'undefined';
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.4';
 const SITE = 'https://m0n0t0ne0ne.github.io/spectra/';
 const appVersion = () => { try { return (NATIVE && window.AndroidBridge.appVersion?.()) || APP_VERSION; } catch { return APP_VERSION; } };
 // Text shared to the app (Gemini's answer → Share → Spectra) opens the paste sheet for the food you asked about.
@@ -526,7 +526,7 @@ function summaryPages(tot, entries, date) {
   const scaleMax = Math.max(eaten, eTarget, 1);
   const filled = (eaten / scaleMax) * 100;
   const markAt = (eTarget / scaleMax) * 100;
-  const diff = eaten - eTarget;
+  const diff = Math.round(eaten) - Math.round(eTarget);
   const en = dayEnergy(date, eaten);
   const goal = store.profile().goal;
   const balColor = !en.ready ? 'var(--text-3)'

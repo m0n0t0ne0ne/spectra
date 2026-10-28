@@ -29,6 +29,9 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import org.json.JSONObject
 import android.util.AtomicFile
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
 
 /**
  * Hosts the Spectra web app (copied from ../web into assets/www at build time) in a WebView.
@@ -68,6 +71,49 @@ class MainActivity : ComponentActivity() {
     // Your diary, foods and settings, one file each in the app's private storage.
     private val storeDir by lazy { File(filesDir, "store").apply { mkdirs() } }
     private val storeLock = Any()
+
+    // Fetches product pages and search results for nutrient lookups. The web view can't read other sites
+    // directly (browsers block that), so the app does it: GET over HTTPS only, text only, size and time capped.
+    private val fetchPool = Executors.newFixedThreadPool(3)
+    private val fetchUserAgent = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Mobile Safari/537.36"
+    private val maxFetchBytes = 1_500_000
+
+    private fun fetchText(urlString: String, headers: JSONObject): Triple<Int, String, String> {
+        var url = URL(urlString)
+        repeat(5) {
+            if (url.protocol != "https") throw IllegalArgumentException("Only https links are fetched")
+            val c = (url.openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = false
+                connectTimeout = 8000
+                readTimeout = 10000
+                setRequestProperty("User-Agent", fetchUserAgent)
+                setRequestProperty("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.5")
+                setRequestProperty("Accept-Language", "en-US,en;q=0.8")
+                headers.keys().forEach { k -> setRequestProperty(k, headers.optString(k)) }
+            }
+            try {
+                val code = c.responseCode
+                if (code in 300..399) {
+                    val next = c.getHeaderField("Location") ?: return Triple(code, url.toString(), "")
+                    url = URL(url, next)
+                    return@repeat
+                }
+                val type = c.contentType ?: ""
+                if (type.isNotEmpty() && !Regex("text|json|xml", RegexOption.IGNORE_CASE).containsMatchIn(type)) return Triple(415, url.toString(), "")
+                val stream = if (code >= 400) c.errorStream else c.inputStream
+                val bytes = stream?.use { input ->
+                    val out = java.io.ByteArrayOutputStream()
+                    val buf = ByteArray(16384)
+                    while (out.size() < maxFetchBytes) { val n = input.read(buf); if (n < 0) break; out.write(buf, 0, n) }
+                    out.toByteArray()
+                } ?: ByteArray(0)
+                val charset = Regex("charset=([\\w-]+)", RegexOption.IGNORE_CASE).find(type)?.groupValues?.get(1)
+                val text = try { String(bytes, charset(charset ?: "UTF-8")) } catch (e: Exception) { String(bytes, Charsets.UTF_8) }
+                return Triple(code, url.toString(), text)
+            } finally { c.disconnect() }
+        }
+        return Triple(310, url.toString(), "")
+    }
     private fun storeFile(key: String) = AtomicFile(File(storeDir, key.replace(Regex("[^A-Za-z0-9._-]"), "_") + ".json"))
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -167,6 +213,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        fetchPool.shutdownNow()
         web.destroy()
         super.onDestroy()
     }
@@ -271,6 +318,17 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun pickFile() {
             runOnUiThread { importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*")) }
+        }
+
+        /** Starts a background GET; the result arrives as window.__onFetchText(id, status, finalUrl, text). */
+        @JavascriptInterface
+        fun fetchText(id: String, url: String, headersJson: String) {
+            fetchPool.execute {
+                val (status, finalUrl, text) = try {
+                    this@MainActivity.fetchText(url, try { JSONObject(headersJson) } catch (e: Exception) { JSONObject() })
+                } catch (e: Exception) { Triple(0, url, "") }
+                js("window.__onFetchText && window.__onFetchText(${JSONObject.quote(id)}, $status, ${JSONObject.quote(finalUrl)}, ${JSONObject.quote(text)})")
+            }
         }
 
         @JavascriptInterface

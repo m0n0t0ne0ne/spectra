@@ -148,44 +148,92 @@ export function askAI(opts) {
 
 /* ---------------- Gemini ---------------- */
 
-const GEMINI_FALLBACKS = ['gemini-3.5-flash-lite'];
+export const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
 
-export async function gemini({ system, prompt, search = false, maxTokens = 2000, signal }) {
+// Google answers 429 for three different reasons; only the first is worth waiting for.
+//   minute: too many requests or tokens this minute → wait the delay Google gives, retry once
+//   day:    this model's daily allowance is used up → try the other model once
+//   none:   the feature isn't on this tier ("limit: 0"), e.g. Google Search on a free key → retry without search
+export function quotaKind(status, errJSON) {
+  if (status !== 429) return null;
+  const e = errJSON?.error || {};
+  const details = e.details || [];
+  const msg = String(e.message || '');
+  const violations = details.flatMap((d) => d.violations || []);
+  const ids = violations.map((v) => `${v.quotaId || ''} ${v.quotaMetric || ''}`).join(' ');
+  const retry = details.find((d) => /RetryInfo/.test(d['@type'] || ''))?.retryDelay;
+  const delaySec = retry ? parseFloat(retry) : null;
+  const zero = /limit:\s*0\b/i.test(msg) || violations.some((v) => String(v.quotaValue) === '0');
+  const search = /search|grounding/i.test(`${msg} ${ids}`);
+  const day = /per\s*day|PerDay|daily/i.test(`${msg} ${ids}`);
+  return { kind: zero ? 'none' : day ? 'day' : 'minute', search, delaySec, message: msg };
+}
+
+const sleep = (ms, signal) => new Promise((resolve, reject) => {
+  const t = setTimeout(resolve, ms);
+  signal?.addEventListener('abort', () => { clearTimeout(t); reject(Object.assign(new Error('Cancelled'), { name: 'AbortError' })); }, { once: true });
+});
+
+// Plain-language version of Google's reason, keeping Google's own words at the end.
+function quotaMessage(q, model) {
+  const google = q.message ? ` (Google: “${q.message.split('\n')[0].slice(0, 220)}”)` : '';
+  if (q.kind === 'none' && q.search) return `Google doesn’t allow web search on your key’s tier${google}`;
+  if (q.kind === 'none') return `${model} isn’t available on your key’s tier${google}`;
+  if (q.kind === 'day') return `Today’s Gemini allowance for your key is used up; it resets at midnight Pacific time${google}`;
+  return `Gemini is busy for your key this minute; try again in a minute${google}`;
+}
+
+// One request, plus at most one justified retry. onWait(seconds) lets the screen say why it's pausing.
+// Returns { text, sources, model, searched }.
+export async function gemini({ system, prompt, search = false, maxTokens = 2000, signal, onWait, images = [] }) {
   const s = store.settings();
   if (!s.geminiKey) throw Object.assign(new Error('No Gemini API key'), { code: 'no_key' });
-  const model = /^gemini-2\./.test(s.geminiModel || '') || !s.geminiModel ? 'gemini-3.8-flash' : s.geminiModel;
-  const body = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    systemInstruction: { parts: [{ text: system }] },
-    // Thinking models count reasoning toward this limit, so leave generous room.
-    generationConfig: { maxOutputTokens: Math.max(8192, maxTokens * 3) }
-  };
-  if (search) body.tools = [{ google_search: {} }];
-  // Each model has its own free daily allowance. When one is used up, try the lighter model before giving up.
-  const models = [model, ...GEMINI_FALLBACKS.filter((m) => m !== model)];
-  let res = null, quotaHit = false;
-  for (const m of models) {
-    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, {
+  let model = GEMINI_MODELS.includes(s.geminiModel) ? s.geminiModel : GEMINI_MODELS[0];
+  let useSearch = search;
+  let retried = false, switched = false;
+  for (;;) {
+    const body = {
+      contents: [{ role: 'user', parts: [...images.map((im) => ({ inline_data: { mime_type: im.mime, data: im.data } })), { text: prompt }] }],
+      systemInstruction: { parts: [{ text: system }] },
+      // Thinking models count reasoning toward this limit, so leave room. Only tokens actually used count toward quota.
+      generationConfig: { maxOutputTokens: Math.max(8192, maxTokens * 3) }
+    };
+    if (useSearch) body.tools = [{ google_search: {} }];
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST', signal,
       headers: { 'content-type': 'application/json', 'x-goog-api-key': s.geminiKey },
       body: JSON.stringify(body)
     });
-    if (res.status !== 429) break;
-    quotaHit = true;
+    if (res.ok) {
+      const data = await res.json();
+      const c = data.candidates?.[0];
+      const text = (c?.content?.parts || []).map((p) => p.text || '').join('');
+      const sources = (c?.groundingMetadata?.groundingChunks || []).map((g) => g.web).filter((w) => w?.uri).map((w) => ({ url: w.uri, title: w.title || '' }));
+      if (!text) throw new Error(c?.finishReason ? `Gemini stopped (${c.finishReason})` : 'Empty reply from Gemini');
+      return { text, sources, model, searched: useSearch };
+    }
+    const raw = await res.text().catch(() => '');
+    let errJSON = null;
+    try { errJSON = JSON.parse(raw); } catch { /* not JSON */ }
+    const q = quotaKind(res.status, errJSON);
+    if (q) {
+      if (q.kind === 'none' && useSearch) { useSearch = false; continue; } // search not allowed: same request without it
+      if (q.kind === 'minute' && !retried) {
+        retried = true;
+        const wait = Math.min(Math.max(q.delaySec ?? 20, 2), 30);
+        onWait?.(Math.round(wait));
+        await sleep(wait * 1000, signal);
+        continue;
+      }
+      if ((q.kind === 'day' || q.kind === 'none') && !switched) {
+        const other = GEMINI_MODELS.find((m) => m !== model);
+        if (other) { switched = true; model = other; continue; }
+      }
+      throw Object.assign(new Error(quotaMessage(q, model)), { status: 429, code: 'quota', quota: q.kind });
+    }
+    const msg = errJSON?.error?.message || `Gemini API error ${res.status}`;
+    throw Object.assign(new Error(msg), { status: res.status });
   }
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    let msg = `Gemini API error ${res.status}`;
-    try { msg = JSON.parse(t).error?.message || msg; } catch { /* ignore */ }
-    if (res.status === 429 || quotaHit) msg = 'Gemini’s free daily limit for your key is used up. It resets daily, or you can raise it in Google AI Studio.';
-    throw Object.assign(new Error(msg), { status: res.status, code: res.status === 429 ? 'quota' : undefined });
-  }
-  const data = await res.json();
-  const c = data.candidates?.[0];
-  const text = (c?.content?.parts || []).map((p) => p.text || '').join('');
-  const sources = (c?.groundingMetadata?.groundingChunks || []).map((g) => g.web).filter((w) => w?.uri).map((w) => ({ url: w.uri, title: w.title || '' }));
-  if (!text) throw new Error(c?.finishReason ? `Gemini stopped (${c.finishReason})` : 'Empty reply from Gemini');
-  return { text, sources };
 }
 
 

@@ -70,7 +70,7 @@ export function exportData(range = null, parts = ['diary', 'body']) {
   const foods = range || !parts.includes('diary') ? Object.fromEntries(Object.entries(allFoods).filter(([id]) => used.has(id))) : allFoods;
   return {
     app: 'spectra', version: 2, exportedAt: new Date().toISOString(), range: typeof range === 'function' ? null : range,
-    settings: range ? { meals: store.meals() } : { ...s, claudeKey: undefined, geminiKey: undefined },
+    settings: range ? { meals: store.meals() } : { ...s, claudeKey: undefined, geminiKey: undefined, braveKey: undefined, fdcKey: undefined },
     foods, log,
     weights: parts.includes('body') ? pick(store.weights(), range) : {},
     activities: parts.includes('body') ? pick(read(K.activities, {}), range) : {}

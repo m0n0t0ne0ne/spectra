@@ -41,7 +41,7 @@ footer a{color:var(--text-2)}
 <header><div class="wrap"><a class="brand" href="./"><img src="assets/icon.svg" alt="">Spectra</a></div></header>
 <main class="wrap">
   <h1>Privacy policy</h1>
-  <p class="updated">Applies to Spectra 1.0 and later · Last updated October 24, 2026</p>
+  <p class="updated">Applies to Spectra 1.0 and later · Last updated October 28, 2026</p>
 
   <div class="summary"><p><b>In short:</b> Spectra has no account, no server of its own, no analytics and no ads. Your diary, foods, weights, workouts, settings and API keys are stored only on your phone. To look up foods, the app sends the barcode number or food name you ask about to the services listed below, and nothing else.</p></div>
 
@@ -61,6 +61,9 @@ footer a{color:var(--text-2)}
     <tr><th>Service</th><th>When</th><th>What is sent</th></tr>
     <tr><td><b>Open Food Facts</b></td><td>You scan or type a barcode</td><td>The barcode number</td></tr>
     <tr><td><b>USDA FoodData Central</b></td><td>You scan a barcode or search for a food</td><td>The barcode number or search words, and your USDA key if you added one</td></tr>
+    <tr><td><b>UPCitemdb</b></td><td>A scanned barcode isn't in Open Food Facts or USDA</td><td>The barcode number</td></tr>
+    <tr><td><b>DuckDuckGo</b>, or <b>Brave Search</b> if you added a Brave key</td><td>A new product needs nutrient data (lookup method "Read brand pages")</td><td>The product's brand and name (or barcode) plus "nutrition facts", and your Brave key if you added one</td></tr>
+    <tr><td><b>Brand and retailer websites</b></td><td>Right after that search</td><td>An ordinary request for the 2–3 product pages the search found, like opening them in a browser; nothing about you</td></tr>
     <tr><td><b>Google Gemini API</b></td><td>Only if you added a Gemini key, when a product needs nutrient data or you test the key</td><td>The product's barcode, name, brand and label serving, and your key</td></tr>
     <tr><td><b>Anthropic Claude API</b></td><td>Only if you chose Claude and added a key</td><td>Same as Gemini</td></tr>
     <tr><td><b>Gemini app</b></td><td>You tap Ask Gemini</td><td>A prepared question about the product, handed to the Gemini app on your phone; you see it before sending</td></tr>

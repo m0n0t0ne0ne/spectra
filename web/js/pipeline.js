@@ -7,10 +7,19 @@
 //    prints (e.g. calcium printed as 0 mg because it's under 2% DV); otherwise the label stands.
 // Every value keeps a `src` tag: label | spec | lab | est.
 // Without an AI key, the databases' own label values are used instead.
+//
+// Two ways to do step 2 (Targets → Data sources → Lookup method):
+// - "pages" (default): the app finds the product's own pages itself (UPCitemdb, Brave or DuckDuckGo, then fetches
+//   2–3 pages) and sends their nutrition text to the AI with the Ask Gemini prompt. One request, no AI web search,
+//   so it works on free Gemini keys.
+// - "classic": the 1.0.1 behavior. The AI does its own web search (identify + fill).
 import { NUTRIENTS, BY_KEY, RARELY_MEASURED, deriveTotals } from './nutrients.js';
 import { offProduct, fdcByUPC, fdcLabProfile, askAI, aiName, parseJSON, hasAI, titleCase } from './api.js';
 import { store } from './store.js';
 import { mergePrecise } from './precision.js';
+import { upcItemDb, productPages } from './lookup.js';
+import { geminiNutrientPrompt } from './prompts.js';
+import { parseLocal, servingFromText } from './paste.js';
 
 const KEY_LIST = NUTRIENTS.filter((n) => !n.derived).map((n) => `${n.key} (${n.unit})`).join(', ');
 const MAX_PER_100 = { g: 100, mg: 100000, 'µg': 1e8, IU: 1e7, kcal: 950 };
@@ -120,6 +129,69 @@ Reply with JSON only inside <json></json>:
   return { per100, sources: srcs, serving: servingOut, total: Object.keys(per100).length };
 }
 
+/* ---------- nutrients from the product's own pages: one AI request, no AI web search ---------- */
+
+export const lookupMode = () => (store.settings().lookupMode === 'classic' ? 'classic' : 'pages');
+
+const PAGE_SYSTEM = 'You compile nutrition data for one exact product from source text you are given. You have no web access. You copy printed numbers exactly and mark anything you infer with (est.).';
+
+async function fillFromPages(food, { signal, onProgress, onWait } = {}) {
+  const named = [food.brand, food.name].filter(Boolean).join(' ');
+  const query = named ? `${named} nutrition facts` : `${food.upc} nutrition facts`;
+  let pages = [], engine = '';
+  try { ({ pages, engine } = await productPages(query, food.brand, { onProgress })); } catch { pages = []; }
+  if (signal?.aborted) throw Object.assign(new Error('Cancelled'), { name: 'AbortError' });
+
+  const serving = food.servings?.[0];
+  const labelLines = serving ? Object.entries(food.per100 || {}).filter(([k, c]) => BY_KEY[k] && c?.v != null)
+    .map(([k, c]) => `${BY_KEY[k].name}: ${+(c.v * serving.grams / 100).toFixed(4)} ${BY_KEY[k].unit === 'µg' ? 'mcg' : BY_KEY[k].unit}`) : [];
+  const prompt = `${geminiNutrientPrompt(food)}
+
+Sources: you have no web access. Use the text below, which the app fetched for you.
+- Barcode-database label values are the printed Nutrition Facts: use them exactly, without (est.).
+- Values these pages state for this exact product and flavor (label panel, supplement facts, spec sheet): use them exactly, without (est.).
+- Everything else: your best estimate from the ingredients and typical data for this kind of food, marked (est.).
+- Ignore any page that describes a different product, flavor or size.${food.unidentified || !food.name ? '\n- Identify the product from the pages, and start with the Product and Serving size lines.' : ''}
+${labelLines.length ? `\nBarcode-database label values (one serving, ${serving.label}):\n${labelLines.join('\n')}\n` : ''}${food.ingredients ? `\nIngredients: ${food.ingredients.slice(0, 1200)}\n` : ''}
+${pages.length ? pages.map((p, i) => `--- Page ${i + 1}: ${p.title || ''} (${p.url})\n${p.text}`).join('\n\n') : '--- No product pages could be fetched. Use the label values above and estimates.'}`;
+
+  onProgress?.(`${aiName()} is reading ${pages.length ? `${pages.length} page${pages.length === 1 ? '' : 's'}` : 'the label'}`);
+  const { text } = await askAI({ system: PAGE_SYSTEM, prompt, search: false, maxTokens: 4000, signal, onWait });
+
+  const parsed = parseLocal(text);
+  const sv = servingFromText(text) || (serving && serving.grams > 0 ? serving : null);
+  if (!sv) throw new Error('No serving size to work from');
+  const productLine = text.match(/^[\s*_#-]*product\s*:\s*(.+)$/im)?.[1]?.replace(/[*_#]/g, '').trim() || '';
+  const est = new Set(parsed.comparable), lab = new Set(parsed.lab);
+  const spec = {}, labV = {}, estV = {};
+  for (const [k, v] of Object.entries(parsed.nutrients)) (est.has(k) ? estV : lab.has(k) ? labV : spec)[k] = v;
+  const label = {};
+  if (serving && Math.abs(serving.grams - sv.grams) < 0.5) for (const [k, c] of Object.entries(food.per100 || {})) if (c?.v != null) label[k] = c.v * sv.grams / 100;
+  // The AI repeats the database label values it was given; those stay "label", not page data.
+  for (const k of Object.keys(spec)) if (label[k] != null && Math.abs(spec[k] - label[k]) <= 1e-6 * Math.max(1, label[k])) delete spec[k];
+  const keys = NUTRIENTS.filter((n) => !n.derived).map((n) => n.key);
+  const { values } = mergePrecise({ label, spec, lab: labV, est: estV }, { keys });
+  const per100 = {};
+  const counts = { label: 0, spec: 0, lab: 0, est: 0 };
+  for (const [k, { v: perServing, src }] of Object.entries(values)) {
+    const v = perServing * 100 / sv.grams;
+    if (!Number.isFinite(v) || v < 0 || v > (MAX_PER_100[BY_KEY[k].unit] ?? Infinity)) continue;
+    per100[k] = { v, src };
+    counts[src]++;
+  }
+  if (!Object.keys(per100).length) throw new Error('No nutrients in the reply');
+  const srcs = [
+    counts.label ? { kind: 'label', title: 'Nutrition label', count: counts.label, note: 'From the barcode databases' } : null,
+    counts.spec ? { kind: 'spec', title: pages.length ? 'Brand and retailer pages' : 'Product data', url: pages[0]?.url || '', count: counts.spec,
+      note: pages.length ? `Read by ${aiName()} from ${pages.map((p) => p.url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]).join(', ')} (found with ${engine})` : `From ${aiName()}` } : null,
+    counts.lab ? { kind: 'lab', title: 'Lab data', count: counts.lab, note: `As stated in the sources` } : null,
+    counts.est ? { kind: 'est', title: 'Estimated', count: counts.est, note: `Not published for this product; estimated by ${aiName()} from the ingredients and typical data` } : null
+  ].filter(Boolean);
+  // "Product: Brand – Name"
+  const [pb, pn] = productLine.includes('–') || productLine.includes(' - ') ? productLine.split(/\s+[–-]\s+/, 2) : ['', productLine];
+  return { per100, sources: srcs, serving: sv, total: Object.keys(per100).length, name: (pn || '').trim(), brand: (pb || '').trim(), pages };
+}
+
 /* ---------- the whole chain for a barcode ---------- */
 
 // onStep(stepId, status, detail) — steps: info, nutrients. status: running | found | none | skipped | error | cached
@@ -140,7 +212,15 @@ export async function lookupBarcode(code, onStep = () => {}, { signal } = {}) {
   try { usda = await fdcByUPC(code); } catch { /* ignore */ }
   let base = off || usda;
   let why = '';
-  if (!base && hasAI()) {
+  const pagesMode = lookupMode() === 'pages';
+  if (!base && pagesMode) {
+    // Free name lookup first; the page-reading step can still identify the product from its barcode.
+    onStep('info', 'running', 'Not in food databases. Checking UPCitemdb');
+    const u = await upcItemDb(code).catch(() => null);
+    if (u) base = { name: u.name, brand: u.brand, servings: [], source: { url: `https://www.upcitemdb.com/upc/${code}` } };
+    else if (hasAI()) base = { name: '', brand: '', servings: [], unidentified: true };
+  }
+  if (!base && !pagesMode && hasAI()) {
     onStep('info', 'running', `Not in food databases. ${aiName()} is searching the web`);
     try {
       const hit = await identify(code, signal);
@@ -157,13 +237,13 @@ export async function lookupBarcode(code, onStep = () => {}, { signal } = {}) {
   let servings = [...(usda?.servings || []), ...(off?.servings || [])].filter((x, i, all) => all.findIndex((y) => Math.abs(y.grams - x.grams) < 0.5) === i);
   if (!servings.length) servings = base.servings || [];
   const food = {
-    id, name: base.name, brand: base.brand || usda?.brand || '', upc: code,
+    id, name: base.name, brand: base.brand || usda?.brand || '', upc: code, ...(base.unidentified ? { unidentified: true } : {}),
     ingredients: base.ingredients || usda?.ingredients || off?.ingredients || '',
     servings, per100: {}, sources: [], createdAt: Date.now()
   };
-  const infoFrom = [off && 'Open Food Facts', usda && 'USDA', !off && !usda && aiName()].filter(Boolean).join(' + ');
+  const infoFrom = [off && 'Open Food Facts', usda && 'USDA', !off && !usda && (pagesMode ? (base.unidentified ? 'the web' : 'UPCitemdb') : aiName())].filter(Boolean).join(' + ');
   food.sources.push({ kind: 'label', title: `Product info: ${infoFrom}`, url: off?.source?.url || usda?.source?.url || base.source?.url || '', count: 0, note: 'Name, brand, ingredients and serving size' });
-  onStep('info', 'found', servings[0] ? `Serving ${servings[0].label}${/\d\s*g\b/i.test(servings[0].label) ? '' : ` (${+servings[0].grams.toFixed(1)} g)`}` : 'No serving size yet');
+  onStep('info', base.unidentified ? 'running' : 'found', base.unidentified ? 'Identifying it from the web' : servings[0] ? `Serving ${servings[0].label}${/\d\s*g\b/i.test(servings[0].label) ? '' : ` (${+servings[0].grams.toFixed(1)} g)`}` : 'No serving size yet');
 
   // Fallback when there's no AI: the databases' own label values.
   const dbLabel = () => {
@@ -179,17 +259,27 @@ export async function lookupBarcode(code, onStep = () => {}, { signal } = {}) {
     food.sources.push({ kind: 'label', title: 'Label values from the databases', count: Object.keys(food.per100).length, note: 'Add a Gemini key in Targets to fill every nutrient' });
     onStep('nutrients', 'skipped', 'Add a Gemini or Claude key in Targets');
   } else {
-    onStep('nutrients', 'running', `${aiName()} is reading the label and filling every nutrient`);
+    onStep('nutrients', 'running', pagesMode ? 'Finding the product’s pages' : `${aiName()} is reading the label and filling every nutrient`);
+    if (pagesMode) food.per100 = dbLabel();
     try {
-      const r = await fillWithAI(food, signal);
+      const r = pagesMode
+        ? await fillFromPages(food, { signal, onProgress: (d) => onStep('nutrients', 'running', d), onWait: (sec) => onStep('nutrients', 'running', `Waiting ${sec} s: Gemini asked to slow down`) })
+        : await fillWithAI(food, signal);
+      if (pagesMode && food.unidentified) {
+        if (!r.name) throw Object.assign(new Error('Couldn’t identify this product from the web'), { code: 'not_identified' });
+        food.name = r.name; food.brand = r.brand || food.brand; delete food.unidentified;
+        onStep('info', 'found', `${[food.brand, food.name].filter(Boolean).join(' ')}`);
+      }
       food.per100 = r.per100;
       food.sources.push(...r.sources);
       if (r.serving && !food.servings.some((x) => Math.abs(x.grams - r.serving.grams) < 0.5)) food.servings.unshift(r.serving);
       onStep('nutrients', 'found', `${r.total} nutrients`);
     } catch (e) {
       if (e.name === 'AbortError') throw e;
+      // Nothing to save for a product we couldn't even name: report it as not found, with the reason.
+      if (food.unidentified) { onStep('info', 'none', 'Not found on the web either'); throw Object.assign(new Error('Product not found'), { code: 'not_found', detail: e.message }); }
       food.per100 = dbLabel();
-      food.sources.push({ kind: 'label', title: 'Label values from the databases', count: Object.keys(food.per100).length, note: `${aiName()} couldn’t fill nutrients: ${e.message.replace(/\.+$/, '')}. Tap ↻ to try again.` });
+      food.sources.push({ kind: 'label', title: 'Label values from the databases', count: Object.keys(food.per100).length, note: `${aiName()} couldn’t fill the other nutrients: ${e.message.replace(/\.+$/, '')}. Scan it again later, or use Ask Gemini on this food.` });
       onStep('nutrients', 'error', e.message);
     }
   }

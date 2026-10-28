@@ -7,6 +7,7 @@ import { startScanner, stopScanner, decodeImageFile } from './scanner.js';
 import { parseLocal, parseWithAI, detectBasis, firstUrl, servingFromText } from './paste.js';
 import { foodTile, foodKind, FOOD_KINDS } from './foodicon.js';
 import { insightsHTML } from './insights.js';
+import { geminiNutrientPrompt } from './prompts.js';
 import { INFO, MACRO_KEYS, ulFor, DRI_NAME, describePerson, lifeStageCalories } from './nutrient-info.js';
 
 /* ---------------- helpers ---------------- */
@@ -17,7 +18,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 const view = () => $('#main');
 // Inside the Android app the native layer provides AndroidBridge (Google barcode scanner, file saving).
 const NATIVE = typeof window.AndroidBridge !== 'undefined';
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 const SITE = 'https://m0n0t0ne0ne.github.io/spectra/';
 const appVersion = () => { try { return (NATIVE && window.AndroidBridge.appVersion?.()) || APP_VERSION; } catch { return APP_VERSION; } };
 // Text shared to the app (Gemini's answer → Share → Spectra) opens the paste sheet for the food you asked about.
@@ -868,10 +869,20 @@ async function testAI(btn) {
   const el = document.activeElement; if (el?.dataset?.setting) el.blur();
   if (!hasAI()) { out.textContent = 'Paste a key first.'; return; }
   btn.disabled = true; out.style.color = ''; out.textContent = `Asking ${aiName()}…`;
+  const classic = store.settings().lookupMode === 'classic';
   try {
-    const { text, sources } = await askAI({ system: 'Answer in a few words.', prompt: 'Use web search to find the brand of the product with UPC 012000161155, and reply with just the brand name.', search: true, maxTokens: 200 });
+    // One small request without web search: does the key work at all?
+    const r = await askAI({ system: 'Answer in one word.', prompt: 'Reply with the word OK.', maxTokens: 50, onWait: (sec) => { out.textContent = `Waiting ${sec} s: Gemini asked to slow down…`; } });
+    let note = `Working${r.model ? ` · ${r.model}` : ''}.`;
+    // AI web search only matters for the 1.0.1 method.
+    if (classic) {
+      try {
+        const w = await askAI({ system: 'Answer in a few words.', prompt: 'Use web search to find the brand of the product with UPC 012000161155, and reply with just the brand name.', search: true, maxTokens: 200 });
+        note += w.searched === false ? ' Web search isn’t allowed on this key, so AI web search lookups will use estimates.' : ' Web search works.';
+      } catch (e) { note += ` Web search: ${e.message}`; }
+    }
     out.style.color = 'var(--lilac)';
-    out.textContent = `Working. Web search ${sources.length ? 'on' : 'replied'}: “${text.trim().slice(0, 60)}”`;
+    out.textContent = note;
   } catch (e) {
     out.style.color = 'var(--rose)';
     out.textContent = e.message;
@@ -1361,12 +1372,19 @@ function renderSettings() {
       ${(s.provider || (s.geminiKey || !s.claudeKey ? 'gemini' : 'claude')) === 'gemini' ? `
       <label class="field">Gemini API key<input class="input" type="password" autocomplete="off" data-setting="geminiKey" value="${esc(s.geminiKey)}" placeholder="From aistudio.google.com"></label>
       <label class="field">Gemini model
-        <select class="input" data-setting="geminiModel">${[['gemini-3.8-flash', 'Gemini 3.8 Flash (recommended)'], ['gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite (faster)']].map(([v, l]) => `<option value="${v}" ${(s.geminiModel || 'gemini-3.8-flash') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      <p class="small faint" style="margin:0;line-height:1.5">Create a free key at aistudio.google.com › Get API key. A Gemini app subscription doesn’t include API access, but the free tier covers personal use. Searches use Google Search.</p>${testKeyHTML()}` : `
+        <select class="input" data-setting="geminiModel">${[['gemini-3.8-flash', 'Gemini 3.8 Flash (more thorough)'], ['gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite (many more requests a day)']].map(([v, l]) => `<option value="${v}" ${(s.geminiModel || 'gemini-3.8-flash') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <p class="small faint" style="margin:0;line-height:1.5">Create a free key at aistudio.google.com › Get API key. A Gemini app subscription doesn’t include API access. On a free key, Flash-Lite allows many more requests a day than Flash; aistudio.google.com/rate-limit shows yours.</p>${testKeyHTML()}` : `
       <label class="field">Claude API key<input class="input" type="password" autocomplete="off" data-setting="claudeKey" value="${esc(s.claudeKey)}" placeholder="sk-ant-…"></label>
       <label class="field">Claude model
         <select class="input" data-setting="model">${[['claude-sonnet-5-5', 'Sonnet 5.5 (balanced)'], ['claude-haiku-5-5', 'Haiku 5.5 (faster, cheaper)'], ['claude-opus-5-5', 'Opus 5.5 (most thorough)']].map(([v, l]) => `<option value="${v}" ${s.model === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <p class="small faint" style="margin:0">Create a key at console.anthropic.com.</p>${testKeyHTML()}`}
+      <div class="field"><span>How new products get their nutrients</span>
+        <div class="seg" role="group" aria-label="Lookup method" style="margin-top:6px">${[['pages', 'Read brand pages'], ['classic', 'AI web search']].map(([v, l]) => `<button class="chip" data-act="lookup-mode" data-v="${v}" aria-pressed="${(s.lookupMode === 'classic' ? 'classic' : 'pages') === v}">${l}</button>`).join('')}</div></div>
+      <p class="small faint" style="margin:0;line-height:1.5">${s.lookupMode === 'classic'
+        ? 'The 1.0.1 method: the AI searches the web itself. Up to 2 requests per new product, and free Gemini keys may not allow web search (Spectra then asks again without it).'
+        : 'Spectra finds the product’s own pages (brand site and retailers), and the AI reads them: 1 request per new product, no AI web search, works on free keys.'}</p>
+      ${s.lookupMode === 'classic' ? '' : `<label class="field">Brave Search API key<input class="input" type="password" autocomplete="off" data-setting="braveKey" value="${esc(s.braveKey || '')}" placeholder="Optional. Uses DuckDuckGo if empty"></label>
+      <p class="small faint" style="margin:0;line-height:1.5">Brave finds pages more reliably. Free key at api-dashboard.search.brave.com. Without one, Spectra uses DuckDuckGo, which may stop working without notice.</p>`}
       <label class="field">USDA FoodData Central key<input class="input" autocomplete="off" data-setting="fdcKey" value="${esc(s.fdcKey)}" placeholder="Optional. Uses the shared demo key if empty"></label>
       <p class="small faint" style="margin:0">Get a free USDA key at api.data.gov/signup. The demo key is limited to a few dozen lookups an hour.</p>
     </div>
@@ -1397,43 +1415,6 @@ function renderSettings() {
 function barcodeFood(code) {
   const id = 'upc:' + code.replace(/^0+/, '');
   return store.food(id) || store.saveFood({ id, name: `Barcode ${code}`, brand: '', upc: code, unidentified: true, servings: [], per100: {}, sources: [{ kind: 'label', title: 'Added by you', count: 0, note: 'No database had this barcode' }], createdAt: Date.now() });
-}
-
-function geminiPromptBody() {
-  return `From this point forward, whenever I ask you to analyze, evaluate, or search for a food item, meal, or ingredient, you must provide a comprehensive nutritional breakdown using the complete Cronometer-based profile.
-
-Do not limit your output to standard core macros and minimums. Every analysis must systematically evaluate and report all available parameters across the following categories:
-
-* **Energy & General:** Energy (kcal, kJ), Alcohol, Ash, Beta-Hydroxybutyrate, Caffeine, Oxalate, Phytate, and Water.
-* **Carbohydrates:** Total Carbs, Fiber (Insoluble, Soluble), Starch, Sugars (Allulose, Fructose, Galactose, Glucose, Lactose, Maltose, Sucrose, Added Sugars), and Sugar Alcohols.
-* **Lipids:** Total Fat, Monounsaturated, Polyunsaturated, Omega-3 (ALA, DHA, EPA), Omega-6 (AA, LA), Saturated, Trans-Fats, Cholesterol, and Phytosterols.
-* **Protein & Amino Acids:** Total Protein, plus all individual amino acids: Alanine, Arginine, Aspartic acid, Cystine, Glutamic acid, Glycine, Histidine, Hydroxyproline, Isoleucine, Leucine, Lysine, Methionine, Phenylalanine, Proline, Serine, Threonine, Tryptophan, Tyrosine, and Valine.
-* **Vitamins:** B1 (Thiamine), B2 (Riboflavin), B3 (Niacin), B5 (Pantothenic Acid), B6 (Pyridoxine), B12 (Cobalamin), Biotin, Choline, Folate, Vitamin A (including Alpha-carotene, Beta-carotene, Beta-cryptoxanthin, Lutein+Zeaxanthin, Lycopene, and Retinol), Vitamin C, Vitamin D, Vitamin E (including Alpha, Beta, Delta, and Gamma tocopherols), and Vitamin K.
-* **Minerals:** Calcium, Chromium, Copper, Fluoride, Iodine, Iron, Magnesium, Manganese, Molybdenum, Phosphorus, Potassium, Selenium, Sodium, and Zinc.
-
-If specific micronutrient or sub-fraction data for an item is unavailable or estimated, explicitly note it rather than omitting the metric. Maintain maximum analytical depth and precision across all values.
-
-Output format (strict):
-- First line: Product: <brand> – <product name>
-- Second line: Serving size: <household measure> (<grams> g)
-- Then the category headings above, each followed by one line per nutrient: "Nutrient: number unit", for one serving.
-- One number per nutrient: no ranges, no "<", no "~". If a value is estimated, write it and add (est.) at the end of the line. If it's unavailable, write "Nutrient: unavailable".
-- No introduction, explanations, notes, sources or commentary, and nothing in parentheses except (est.) and the serving grams.`;
-}
-
-function geminiNutrientPrompt(food) {
-  const serving = food.servings?.find((x) => x.grams > 0 && !isPlaceholderServing(x));
-  if (food.unidentified) {
-    return geminiPromptBody() + `\n\nFood item: the product with barcode (UPC/EAN) ${food.upc}. Identify it first (search the barcode the way Google Lens would). Start your answer with these two lines:\nProduct: <brand> – <product name>\nServing size: <household measure> (<grams> g)\nThen give the breakdown for one serving.`;
-  }
-  const item = [
-    `Food item: ${[food.brand, food.name].filter(Boolean).join(' ')}`,
-    food.upc ? `Barcode: ${food.upc}` : '',
-    serving ? `Label serving size: ${/\d\s*g\b/i.test(serving.label) ? serving.label : `${serving.label} (${fmt(serving.grams)} g)`}` : ''
-  ].filter(Boolean).join('\n');
-  return `${geminiPromptBody()}
-
-${item}`;
 }
 
 function askGeminiApp(food) {
@@ -2483,6 +2464,7 @@ document.addEventListener('click', async (ev) => {
     case 'profile-set': store.saveProfile({ [el.dataset.k]: el.dataset.v }); render(); break;
     case 'weight-del': store.setWeight(el.dataset.d, ''); render(); break;
     case 'provider': store.saveSettings({ provider: el.dataset.v }); render(); break;
+    case 'lookup-mode': store.saveSettings({ lookupMode: el.dataset.v }); render(); toast(el.dataset.v === 'classic' ? 'Using AI web search (1.0.1 method)' : 'Reading brand pages'); break;
     case 'test-ai': testAI(el); break;
     case 'ask-gemini': askGeminiApp(store.food(el.dataset.id)); break;
     case 'ask-gemini-barcode': askGeminiApp(barcodeFood(el.dataset.code)); break;

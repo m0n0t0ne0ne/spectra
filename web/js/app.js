@@ -1,6 +1,6 @@
 import { NUTRIENTS, BY_KEY, GROUPS, fmt, deriveTotals } from './nutrients.js';
 import { storageUsage, exportData, importPreview, importData, dataBreakdown, deleteDiaryMonths, deleteBodyMonths, deleteFoods } from './store.js';
-import { store, sortMeal, energyTargetFor, totals, coverage, todayISO, ACTIVITY_LEVELS, ACTIVITY_TYPES, bmrFor, dayEnergy, activityKcal } from './store.js';
+import { store, sortMeal, energyTargetFor, totals, coverage, todayISO, ACTIVITY_LEVELS, ACTIVITY_TYPES, activityKcalFor, activityName, bmrFor, dayEnergy, activityKcal } from './store.js';
 import { fdcSearch, isPlaceholderServing } from './api.js';
 import { lookupBarcode, foodFromSearchHit } from './pipeline.js';
 import { startScanner, stopScanner, decodeImageFile } from './scanner.js';
@@ -18,7 +18,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 const view = () => $('#main');
 // Inside the Android app the native layer provides AndroidBridge (Google barcode scanner, file saving).
 const NATIVE = typeof window.AndroidBridge !== 'undefined';
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.0.5';
 const SITE = 'https://m0n0t0ne0ne.github.io/spectra/';
 const appVersion = () => { try { return (NATIVE && window.AndroidBridge.appVersion?.()) || APP_VERSION; } catch { return APP_VERSION; } };
 // Text shared to the app (Gemini's answer → Share → Spectra) opens the paste sheet for the food you asked about.
@@ -1248,8 +1248,7 @@ function bodySection() {
   const first = all[all.length - 1];
   const change = w && first && first[0] !== w.date ? w.lbs - first[1] : null;
   const bmr = bmrFor(today);
-  const level = ACTIVITY_LEVELS[p.activity] || ACTIVITY_LEVELS.sedentary;
-  const baseline = bmr != null ? bmr * level.f : null;
+  const baseline = activityKcalFor(bmr, p);
   const maint = bmr != null ? bmr + baseline + lifeStageCalories(p) : null;
   const ft = p.heightIn ? Math.floor(p.heightIn / 12) : '';
   const inch = p.heightIn ? Math.round((p.heightIn % 12) * 10) / 10 : '';
@@ -1285,11 +1284,20 @@ function bodySection() {
       <label class="field">in<input class="input" type="number" inputmode="decimal" data-height="in" value="${inch}"></label>
     </div>
     <label class="field">Daily activity (outside logged workouts)
-      <select class="input" data-profile="activity">${Object.entries(ACTIVITY_LEVELS).map(([k, l]) => `<option value="${k}" ${p.activity === k ? 'selected' : ''}>${l.name}: ${l.sub}</option>`).join('')}</select></label>
+      <select class="input" data-profile="activity">${Object.entries(ACTIVITY_LEVELS).map(([k, l]) => `<option value="${k}" ${(p.activity || 'sedentary') === k ? 'selected' : ''}>${l.name}: ${l.sub}</option>`).join('')}</select></label>
+    ${p.activity === 'custom' ? `<div class="col" style="gap:10px;padding:14px;background:var(--fill);border-radius:16px">
+      ${seg('activityMode', p.activityMode === 'factor' ? 'factor' : 'kcal', [['kcal', 'kcal a day'], ['factor', '× BMR']])}
+      ${p.activityMode === 'factor'
+        ? `<label class="field">Activity multiplier<input class="input" type="number" inputmode="decimal" step="0.01" min="1" max="3" data-profile="activityFactor" style="background:var(--fill-2)" value="${esc(p.activityFactor ?? '')}" placeholder="e.g. 1.45"></label>
+      <p class="small faint" style="margin:0;line-height:1.45">Maintenance before workouts = BMR × this number. The presets are 1.2 (sedentary), 1.375, 1.55 and 1.725 (very active). Use 1 to 3.</p>`
+        : `<label class="field">Daily activity, kcal a day<input class="input" type="number" inputmode="numeric" step="1" min="0" max="5000" data-profile="activityKcal" style="background:var(--fill-2)" value="${esc(p.activityKcal ?? '')}" placeholder="e.g. 450"></label>
+      <p class="small faint" style="margin:0;line-height:1.45">Calories you burn moving around on a normal day, on top of BMR, not counting workouts you log. A fitness tracker’s average “active calories” on rest days is a good number to use. Stays the same when your weight changes.</p>`}
+      ${(p.activityMode === 'factor' ? !(Number(p.activityFactor) >= 1 && Number(p.activityFactor) <= 3) : !(p.activityKcal !== '' && p.activityKcal != null && Number(p.activityKcal) >= 0 && Number(p.activityKcal) <= 5000)) ? `<span class="small" style="color:var(--wheat)">Enter a number to use it. Until then, sedentary is used.</span>` : ''}
+    </div>` : ''}
     <label class="spread s14"><span class="col" style="gap:2px"><span>Count digestion (TEF)</span><span class="small muted">Adds 10% of the calories you eat to calories burned</span></span><span class="switch"><input type="checkbox" data-profile-check="tef" ${p.tef ? 'checked' : ''}><span aria-hidden="true"></span></span></label>
     ${bmr != null ? `<div class="list" style="background:var(--fill);border-radius:16px;padding:0 14px">
       <div class="spread s14" style="padding:11px 0"><span class="muted">BMR (at rest)</span><span class="b6">${fmt(Math.round(bmr))} kcal</span></div>
-      <div class="spread s14" style="padding:11px 0"><span class="muted">Daily activity (${esc(level.name.toLowerCase())})</span><span class="b6">${fmt(Math.round(baseline))} kcal</span></div>
+      <div class="spread s14" style="padding:11px 0"><span class="muted">Daily activity (${esc(activityName(p))})</span><span class="b6">${fmt(Math.round(baseline))} kcal</span></div>
       ${lifeStageCalories(p) ? `<div class="spread s14" style="padding:11px 0"><span class="muted">${p.stage === 'pregnant' ? 'Pregnancy' : 'Breastfeeding'}</span><span class="b6">${lifeStageCalories(p)} kcal</span></div>` : ''}
       <div class="spread s14" style="padding:11px 0"><span>Maintenance, before workouts</span><span class="b6">${fmt(Math.round(maint))} kcal</span></div>
     </div>` : `<div class="note">${!w ? 'Log your weight above' : 'Add your age and height'} to calculate your BMR.</div>`}
@@ -1739,7 +1747,7 @@ function openBurned(date) {
   const acts = store.activities(date);
   const parts = [
     { label: 'Resting (BMR)', v: en.bmr, color: 'var(--text-2)' },
-    { label: `Daily activity · ${ACTIVITY_LEVELS[p.activity]?.name.toLowerCase() || 'sedentary'}`, v: en.baseline, color: 'var(--sky)' },
+    { label: `Daily activity · ${activityName(p)}`, v: en.baseline, color: 'var(--sky)' },
     { label: 'Workouts', v: en.activities, color: 'var(--lilac)' },
     ...(en.tef ? [{ label: 'Digestion', v: en.tef, color: 'var(--wheat)' }] : [])
   ];

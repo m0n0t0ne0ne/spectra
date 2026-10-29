@@ -393,8 +393,24 @@ export const ACTIVITY_LEVELS = {
   sedentary: { name: 'Sedentary', sub: 'Desk job, little walking', f: 0.2 },
   light: { name: 'Lightly active', sub: 'On your feet some of the day', f: 0.375 },
   moderate: { name: 'Moderately active', sub: 'On your feet most of the day', f: 0.55 },
-  very: { name: 'Very active', sub: 'Physical job', f: 0.725 }
+  very: { name: 'Very active', sub: 'Physical job', f: 0.725 },
+  custom: { name: 'Custom', sub: 'Your own number', f: null }
 };
+
+// Calories burned by daily activity (outside logged workouts) on top of BMR. A preset is a share of BMR;
+// Custom is either a fixed number of kcal a day or an activity multiplier (× BMR, e.g. 1.45).
+export function activityKcalFor(bmr, p = store.profile()) {
+  if (bmr == null) return null;
+  if (p.activity === 'custom') {
+    if (p.activityMode === 'factor') { const m = Number(p.activityFactor); return m >= 1 && m <= 3 ? bmr * (m - 1) : bmr * 0.2; }
+    const k = p.activityKcal === '' || p.activityKcal == null ? NaN : Number(p.activityKcal); return k >= 0 && k <= 5000 ? k : bmr * 0.2;
+  }
+  return bmr * (ACTIVITY_LEVELS[p.activity]?.f ?? 0.2);
+}
+export function activityName(p = store.profile()) {
+  if (p.activity !== 'custom') return (ACTIVITY_LEVELS[p.activity] || ACTIVITY_LEVELS.sedentary).name.toLowerCase();
+  return p.activityMode === 'factor' ? `custom, ×${Number(p.activityFactor) || 1.2} BMR` : 'custom';
+}
 
 // Mifflin-St Jeor resting metabolic rate. Needs age, height and a logged weight.
 export function bmrFor(date = todayISO()) {
@@ -412,7 +428,7 @@ export function dayEnergy(date, consumedKcal = 0) {
   const bmr = bmrFor(date);
   const acts = store.activities(date).reduce((a, x) => a + (Number(x.kcal) || 0), 0);
   if (bmr == null) return { ready: false, activities: acts };
-  const baseline = bmr * (ACTIVITY_LEVELS[p.activity]?.f ?? 0.2);
+  const baseline = activityKcalFor(bmr, p);
   const tef = p.tef ? consumedKcal * 0.1 : 0;
   // Whole calories, so burned, balance and "over target" shown side by side always add up.
   const burned = Math.round(bmr + baseline + acts + tef);
@@ -434,7 +450,7 @@ export function autoEnergyTarget(date = todayISO()) {
   if (!p.autoTarget) return null;
   const bmr = bmrFor(date);
   if (bmr == null) return null;
-  const maint = bmr * (1 + (ACTIVITY_LEVELS[p.activity]?.f ?? 0.2)) + lifeStageCalories(p);
+  const maint = bmr + activityKcalFor(bmr, p) + lifeStageCalories(p);
   const adj = p.goal === 'lose' ? -500 * Number(p.rateLb || 0) : p.goal === 'gain' ? 500 * Number(p.rateLb || 0) : 0;
   return Math.round(maint + adj);
 }

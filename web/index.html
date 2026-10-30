@@ -190,6 +190,12 @@ label.field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(
 .ins-nbar>span{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
 .ins-nbar>i{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;border-radius:1px;background:var(--text-2)}
 .ins-tipcard{padding:14px;border-radius:18px;background:var(--fill)}
+.ins-lrow{border:none;background:none;padding:0;margin:0;color:inherit;font:inherit;text-align:left;cursor:pointer;width:100%;align-items:stretch}
+.ins-tipcard.ins-lrow{padding:14px;background:var(--fill)}
+.ins-lrow:active{opacity:.7}
+.ins-day>summary,#lim-scrim details>summary{list-style:none;cursor:pointer}
+.ins-day>summary::-webkit-details-marker,#lim-scrim details>summary::-webkit-details-marker{display:none}
+.ins-day[open]>summary b{text-decoration:none}
 .ins-sign{flex:none;width:28px;height:28px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px}
 .ins-sign.add{background:var(--lilac-t);color:var(--lilac)}
 .ins-sign.cut{background:var(--rose-t);color:var(--rose)}

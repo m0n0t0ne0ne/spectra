@@ -166,16 +166,25 @@ export function analyze(range) {
   // Limits: sodium, added sugar, saturated fat, and upper limits for anything that has one.
   const kcal = avgEaten || 0;
   const limits = [
-    { key: 'sodium', name: 'Sodium', unit: 'mg', v: avgOf('sodium'), limit: 2300, ideal: store.target('sodium') || 1500, why: 'Above 2,300 mg a day raises blood pressure risk.' },
-    { key: 'added_sugars', name: 'Added sugar', unit: 'g', v: avgOf('added_sugars'), limit: Math.min(store.target('added_sugars') || 50, Math.max(25, (kcal * 0.1) / 4)), why: 'Guidelines keep added sugar under 10% of calories.' },
-    { key: 'sat_fat', name: 'Saturated fat', unit: 'g', v: avgOf('sat_fat'), limit: Math.max(10, (kcal * 0.1) / 9), why: 'Under 10% of calories is the guideline for heart health.' }
+    { key: 'sodium', name: 'Sodium', unit: 'mg', v: avgOf('sodium'), limit: 2300, ideal: store.target('sodium') || 1500, why: 'Above 2,300 mg a day raises blood pressure risk.',
+      basis: `2,300 mg is the Chronic Disease Risk Reduction level: above it, cutting back lowers blood pressure and heart disease risk. Your adequate intake is ${fmt(store.target('sodium') || 1500)} mg, so anywhere between the two is fine.`,
+      risk: 'Too much over time raises blood pressure, which strains the heart, arteries and kidneys. Effects build over years, so the daily average matters more than one salty day.',
+      low: 'Going far under 1,500 mg isn’t a goal. If you sweat heavily in long workouts or heat, you need more to replace what you lose.' },
+    { key: 'added_sugars', name: 'Added sugar', unit: 'g', v: avgOf('added_sugars'), limit: Math.min(store.target('added_sugars') || 50, Math.max(25, (kcal * 0.1) / 4)), why: 'Guidelines keep added sugar under 10% of calories.',
+      basis: `Under 10% of calories (Dietary Guidelines). At your average ${fmt(Math.round(kcal))} kcal a day that’s ${fmt(Math.max(25, (kcal * 0.1) / 4))} g, capped at 50 g.`,
+      risk: 'Added sugar adds calories without other nutrients and crowds out foods that have them. High intake is linked to weight gain, type 2 diabetes, heart disease and tooth decay.',
+      low: 'There’s no minimum: you don’t need any added sugar. Sugar naturally in fruit and milk doesn’t count toward this.' },
+    { key: 'sat_fat', name: 'Saturated fat', unit: 'g', v: avgOf('sat_fat'), limit: Math.max(10, (kcal * 0.1) / 9), why: 'Under 10% of calories is the guideline for heart health.',
+      basis: `Under 10% of calories (Dietary Guidelines and American Heart Association). At your average ${fmt(Math.round(kcal))} kcal a day that’s ${fmt(Math.max(10, (kcal * 0.1) / 9))} g.`,
+      risk: 'High intake raises LDL (“bad”) cholesterol, a main driver of heart disease. Swapping it for unsaturated fats (olive oil, nuts, fish) lowers LDL; swapping it for refined carbs doesn’t help.',
+      low: 'There’s no minimum. Foods like eggs, dairy and meat bring protein and nutrients with it, so the aim is the average, not zero.' }
   ].map((l) => ({ ...l, cov: coverage(l.key), p: l.limit ? l.v / l.limit : 0, daysOver: use.filter((d) => (d.tot[l.key]?.v || 0) > l.limit).length }));
   const ulHits = [];
   for (const x of NUTRIENTS) {
     if (['sodium', 'caffeine'].includes(x.key) || !INFO[x.key]?.ul || INFO[x.key]?.ulNote) continue;
     const ul = ulFor(x.key, prof); if (!ul) continue;
     const over = use.filter((d) => (d.tot[x.key]?.v || 0) > ul.value);
-    if (over.length) ulHits.push({ key: x.key, name: x.name, unit: x.unit, ul: ul.value, days: over.length, max: Math.max(...over.map((d) => d.tot[x.key].v)) });
+    if (over.length) ulHits.push({ key: x.key, name: x.name, unit: x.unit, ul: ul.value, ulName: ul.name || 'Tolerable Upper Intake Level', days: over.length, max: Math.max(...over.map((d) => d.tot[x.key].v)) });
   }
   const caffeine = (() => { const ul = ulFor('caffeine', prof); const over = use.filter((d) => (d.tot.caffeine?.v || 0) > (ul?.value || 400)); return over.length ? { days: over.length, limit: ul?.value || 400, avg: avgOf('caffeine') } : null; })();
 
@@ -205,10 +214,10 @@ export function analyze(range) {
     const a = (foodAgg[f.id] = foodAgg[f.id] || { food: f, times: 0, grams: 0, days: new Set() });
     a.times++; a.grams += e.grams; a.days.add(d.date);
   }
-  const contrib = (k) => {
+  const contrib = (k, count = 3) => {
     const tot = sum[k]?.v || 0; if (!tot) return [];
     return Object.values(foodAgg).map((a) => ({ food: a.food, v: ((a.food.per100?.[k]?.v || 0) * a.grams) / 100 }))
-      .filter((x) => x.v > 0).sort((a, b) => b.v - a.v).slice(0, 3).map((x) => ({ ...x, share: x.v / tot }));
+      .filter((x) => x.v > 0).sort((a, b) => b.v - a.v).slice(0, count).map((x) => ({ ...x, share: x.v / tot }));
   };
   // Your usual portion of every food you've ever logged, for "foods you already eat that are rich in X".
   const usual = {};
@@ -317,13 +326,20 @@ function weightChart(a) {
   const grid = []; for (let v = lo; v <= hi + 1e-6; v += step) grid.push(+v.toFixed(2));
   const predLine = pred.length > 1 ? `<polyline points="${pred.map((p) => `${x(p.date).toFixed(1)},${y(p.lbs).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--sky)" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"/>` : '';
   const wLine = pts.length > 1 ? `<polyline points="${pts.map((p) => `${x(p.date).toFixed(1)},${y(p.lbs).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--lilac)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : '';
-  const dots = pts.map((p) => `<circle cx="${x(p.date).toFixed(1)}" cy="${y(p.lbs).toFixed(1)}" r="4" fill="var(--lilac)" stroke="var(--card)" stroke-width="2"/><circle cx="${x(p.date).toFixed(1)}" cy="${y(p.lbs).toFixed(1)}" r="14" fill="transparent" data-tip="${esc(`${short(p.date)} · ${fmt(p.lbs)} lb on the scale`)}"/>`).join('');
+  const lb1 = (v) => `${v.toFixed(1)} lb`;
+  const predOn = Object.fromEntries(pred.map((p) => [p.date, p.lbs]));
+  const dots = pts.map((p) => {
+    const pr = predOn[p.date];
+    const tip = `${short(p.date)} · ${lb1(p.lbs)} on the scale${pr != null && p.date !== pred[0]?.date ? ` · ${lb1(pr)} predicted (${signed(p.lbs - pr, 1)} lb)` : ''}`;
+    return `<circle cx="${x(p.date).toFixed(1)}" cy="${y(p.lbs).toFixed(1)}" r="4" fill="var(--lilac)" stroke="var(--card)" stroke-width="2"/><circle cx="${x(p.date).toFixed(1)}" cy="${y(p.lbs).toFixed(1)}" r="14" fill="transparent" data-tip="${esc(tip)}"/>`;
+  }).join('');
   const lastP = pred[pred.length - 1];
-  const predEnd = lastP ? `<circle cx="${x(lastP.date).toFixed(1)}" cy="${y(lastP.lbs).toFixed(1)}" r="14" fill="transparent" data-tip="${esc(`${short(lastP.date)} · ${fmt(lastP.lbs)} lb predicted from your calories`)}"/>` : '';
+  // The predicted line's end is tappable only when no scale point sits on the same day (that point already shows both).
+  const predEnd = lastP && !pts.some((p) => p.date === lastP.date) ? `<circle cx="${x(lastP.date).toFixed(1)}" cy="${y(lastP.lbs).toFixed(1)}" r="3" fill="var(--sky)"/><circle cx="${x(lastP.date).toFixed(1)}" cy="${y(lastP.lbs).toFixed(1)}" r="14" fill="transparent" data-tip="${esc(`${short(lastP.date)} · ${lb1(lastP.lbs)} predicted from your calories`)}"/>` : '';
   const ticks = [first, addDays(first, Math.round(span / 2)), last].map((d, i) => `<text x="${x(d).toFixed(1)}" y="${H - 6}" text-anchor="${['start', 'middle', 'end'][i]}" font-size="9.5" fill="var(--text-3)">${short(d)}</text>`).join('');
   return `<svg class="ins-svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Logged weight and the weight your calories predict">
     ${grid.map((v) => `<line x1="${left}" x2="${W - right}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--line)"/><text x="${left - 6}" y="${(y(v) + 3.5).toFixed(1)}" text-anchor="end" font-size="9.5" fill="var(--text-3)">${fmt(v)}</text>`).join('')}
-    ${predLine}${wLine}${dots}${predEnd}${ticks}
+    ${predLine}${wLine}${predEnd}${dots}${ticks}
   </svg>`;
 }
 
@@ -574,11 +590,11 @@ export function insightsHTML(range, showAll) {
     <div class="col" style="gap:16px">${lim.map((l) => {
       const st = l.cov < 0.4 && !(l.v > 0) ? 'none' : l.key === 'sodium' ? (l.v <= 2300 ? 'good' : l.v <= 3000 ? 'warn' : 'bad') : (l.p <= 1 ? 'good' : l.p <= 1.3 ? 'warn' : 'bad');
       const top = a.contrib(l.key)[0];
-      return `<div class="col" id="ins-l-${l.key}" style="gap:6px;scroll-margin-top:16px">
-        <div class="spread" style="align-items:baseline"><span class="s15 b6">${l.name}</span><span class="s14 muted">${fmt(l.v)} / ${fmt(l.limit)} ${l.unit}</span></div>
+      return `<button class="col ins-lrow" id="ins-l-${l.key}" data-act="ins-limit" data-k="${l.key}" aria-label="${esc(l.name)}: ${fmt(l.v)} of ${fmt(l.limit)} ${l.unit}. Show days and foods" style="gap:6px;scroll-margin-top:16px">
+        <div class="spread" style="align-items:baseline"><span class="s15 b6">${l.name}</span><span class="s14 muted row" style="gap:4px">${fmt(l.v)} / ${fmt(l.limit)} ${l.unit}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span></div>
         <span class="ins-nbar" aria-hidden="true"><span style="width:${Math.min(100, (l.p / 1.5) * 100).toFixed(1)}%;background:${STATUS[st].color}"></span><i style="left:${(100 / 1.5).toFixed(1)}%"></i></span>
-        <span class="s13 muted" style="line-height:1.4">${st === 'none' ? 'Not listed on most of your foods.' : `Over on ${l.daysOver} of ${a.n} days.`}${top ? ` Biggest source: ${esc(top.food.name)} (${pct(top.share)}).` : ''}${st === 'bad' || st === 'warn' ? ' Tips under What to change.' : ''}</span>
-      </div>`;
+        <span class="s13 muted" style="line-height:1.4">${st === 'none' ? 'Not listed on most of your foods.' : `Over on ${l.daysOver} of ${a.n} days.`}${top ? ` Biggest source: ${esc(top.food.name)} (${pct(top.share)}).` : ''}</span>
+      </button>`;
     }).join('')}</div>
   </div>`);
 
@@ -616,17 +632,18 @@ export function insightsHTML(range, showAll) {
   }
   for (const l of cuts) {
     const top = a.contrib(l.key);
-    tips.push(`<div class="ins-tipcard" id="ins-tip-${l.key}">
+    tips.push(`<button class="ins-tipcard ins-lrow" id="ins-tip-${l.key}" data-act="ins-limit" data-k="${l.key}" style="width:100%">
       <div class="row" style="gap:10px;align-items:flex-start"><span class="ins-sign cut" aria-hidden="true">−</span>
       <div class="col" style="gap:4px;min-width:0;flex:1">
         <span class="s15 b6">Less ${esc(l.name.toLowerCase())}</span>
         <span class="s13 muted" style="line-height:1.4">${fmt(l.v)} ${l.unit} a day vs a ${fmt(l.limit)} ${l.unit} limit · over on ${l.daysOver} of ${a.n} days. ${l.why}</span>
         ${top.length ? `<span class="small muted mt8">Biggest sources in your diet</span>${top.map((f) => `<span class="s13 row" style="gap:6px"><b class="b6 ellipsis" style="min-width:0;flex:1">${esc(f.food.name)}</b><span class="muted" style="flex:none">${pct(f.share)} of it</span></span>`).join('')}` : ''}
-      </div></div></div>`);
+        <span class="s13 b6" style="color:var(--lilac);margin-top:4px">See days and foods ›</span>
+      </div></div></button>`);
   }
   a.ulHits.forEach((u, i) => {
-    tips.push(`<div class="ins-tipcard"${i === 0 ? ' id="ins-tip-ul"' : ''}><div class="row" style="gap:10px;align-items:flex-start"><span class="ins-sign cut" aria-hidden="true">!</span>
-      <div class="col" style="gap:4px"><span class="s15 b6">${esc(u.name)} over the upper limit</span><span class="s13 muted" style="line-height:1.4">Above ${fmt(u.ul, u.unit)} on ${u.days} day${u.days === 1 ? '' : 's'} (up to ${fmt(u.max, u.unit)}). Check supplement doses and fortified foods.</span></div></div></div>`);
+    tips.push(`<button class="ins-tipcard ins-lrow"${i === 0 ? ' id="ins-tip-ul"' : ''} data-act="ins-limit" data-k="${u.key}" style="width:100%"><div class="row" style="gap:10px;align-items:flex-start"><span class="ins-sign cut" aria-hidden="true">!</span>
+      <div class="col" style="gap:4px;flex:1"><span class="s15 b6">${esc(u.name)} over the upper limit</span><span class="s13 muted" style="line-height:1.4">Above ${fmt(u.ul, u.unit)} on ${u.days} day${u.days === 1 ? '' : 's'} (up to ${fmt(u.max, u.unit)}). Check supplement doses and fortified foods. Tap for days and foods.</span></div></div></button>`);
   });
   if (a.omega && !a.omega.thin && a.omega.ratio > 4) {
     const top6 = a.contrib('omega6').slice(0, 3);
@@ -689,4 +706,74 @@ export function insightsHTML(range, showAll) {
 
   return head + `<section class="screen col mt16" style="gap:12px;padding-bottom:28px">${out.join('')}
     <p class="small muted" style="margin:4px 4px 0;line-height:1.5">Projections use 3,500 kcal per pound and your logged food, which is never perfect. This is guidance, not medical advice.</p></section>`;
+}
+
+/* ---------------- limit detail ---------------- */
+
+const shortDay = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+
+// One limit (sodium, added sugar, saturated fat, or any nutrient's upper limit) for the period: how the limit is set,
+// why it matters, every day you went over and the foods that put you there.
+export function limitDetailHTML(range, key) {
+  const a = analyze(range);
+  if (a.empty) return null;
+  const nu = NUTRIENTS.find((x) => x.key === key);
+  if (!nu) return null;
+  let l = a.limits.find((x) => x.key === key);
+  if (!l) {
+    const ul = ulFor(key, store.profile());
+    if (!ul) return null;
+    const info = INFO[key] || {};
+    l = { key, name: nu.name, unit: nu.unit, v: a.avgOf(key), limit: ul.value, cov: 1,
+      basis: `${fmt(ul.value, nu.unit)} is the ${ul.name || 'Tolerable Upper Intake Level'} for your age and sex: the most that nearly everyone can take every day without risk of harm.${info.ulNote ? ' ' + info.ulNote : ''}`,
+      risk: 'Going over now and then is rarely a problem; going over day after day can be. It usually comes from supplements or heavily fortified foods, not ordinary food.',
+      low: store.target(key) ? `Your target is ${fmt(store.target(key), nu.unit)} a day, so the aim is between the target and the upper limit.` : '' };
+    l.daysOver = a.use.filter((d) => (d.tot[key]?.v || 0) > l.limit).length;
+  }
+  const foods = store.foods();
+  const unit = nu.unit;
+  const dayRows = a.use.map((d) => {
+    const v = d.tot[key]?.v || 0;
+    const items = d.entries.map((e) => { const f = foods[e.foodId]; const per = f?.per100?.[key]?.v; return f && per ? { name: f.name, brand: f.brand, grams: e.grams, unit: e.unit, qty: e.qty, meal: e.meal, v: (per * e.grams) / 100 } : null; })
+      .filter((x) => x && x.v > 0).sort((p, q) => q.v - p.v);
+    return { date: d.date, v, over: v > l.limit, items };
+  }).sort((p, q) => q.date.localeCompare(p.date));
+  const over = dayRows.filter((d) => d.over);
+  const under = dayRows.filter((d) => !d.over);
+  const p = l.limit ? l.v / l.limit : 0;
+  const st = p > 1 ? 'bad' : over.length ? 'warn' : 'good';
+  const mealName = (k) => store.meals().find((m) => m.key === k)?.name || '';
+  const amt = (it) => !it.unit || it.unit === 'g' ? `${fmt(it.grams)} g` : `${Number(it.qty) === 1 ? '' : fmt(it.qty) + ' × '}${it.unit}`;
+  const items = (d) => d.items.slice(0, 8).map((it) => `<div class="spread s13" style="gap:10px;padding:7px 0"><span class="col" style="gap:1px;min-width:0;flex:1"><span class="ellipsis">${esc(it.name)}</span><span class="small muted ellipsis">${esc([amt(it), mealName(it.meal)].filter(Boolean).join(' · '))}</span></span><span class="col" style="gap:1px;align-items:flex-end;flex:none"><b class="b6">${fmt(it.v, unit)}</b><span class="small muted">${pct(d.v ? it.v / d.v : 0)} of day</span></span></div>`).join('')
+    + (d.items.length > 8 ? `<div class="small muted" style="padding:4px 0">+ ${d.items.length - 8} more</div>` : '');
+  const dayBlock = (d, open) => `<details class="ins-day"${open ? ' open' : ''}><summary class="spread s14" style="padding:12px 0"><span>${shortDay(d.date)}</span><span class="row" style="gap:8px"><b class="b6" style="color:${d.over ? 'var(--rose)' : 'var(--text)'}">${fmt(d.v, unit)}</b>${d.over ? `<span class="small" style="color:var(--rose)">+${fmt(d.v - l.limit, unit)}</span>` : ''}</span></summary>
+    <div style="padding:0 0 10px">${d.items.length ? items(d) : '<div class="small muted">No logged food lists this nutrient.</div>'}
+    <a class="s13 b6" href="#/day/${d.date}" data-act="lim-close" style="color:var(--lilac);display:inline-block;margin-top:6px">Open this day in the diary ›</a></div></details>`;
+  const top = a.contrib(key, 5);
+  const msg = st === 'bad' ? `You average ${fmt(l.v - l.limit, unit)} over the limit a day, and went over on ${over.length} of ${a.n} days.`
+    : st === 'warn' ? `Under the limit on average, but over on ${over.length} of ${a.n} day${a.n === 1 ? '' : 's'}.`
+    : `Within the limit on every day in this period.`;
+  const rangeName = { 7: 'last 7 days', 30: 'last 30 days', 90: 'last 90 days', all: 'all your days' }[range] || 'this period';
+  return `<div class="handle"></div>
+    <div class="spread"><h2 class="h2" id="lim-title">${esc(l.name)}</h2><button class="icon-btn ghost" data-act="lim-close" aria-label="Close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <p class="small muted" style="margin:2px 0 0">Daily average, ${rangeName} (${a.n} full day${a.n === 1 ? '' : 's'})</p>
+    <div class="row mt12" style="gap:8px;align-items:baseline"><span style="font-size:40px;font-weight:300;letter-spacing:-.03em;line-height:1">${fmt(l.v)}</span><span class="s15 muted">of ${fmt(l.limit)} ${unit} limit</span></div>
+    <span class="ins-nbar mt12" aria-hidden="true" style="display:block"><span style="width:${Math.min(100, (p / 1.5) * 100).toFixed(1)}%;background:${STATUS[st].color}"></span><i style="left:${(100 / 1.5).toFixed(1)}%"></i></span>
+    <div class="mt12" style="padding:12px 14px;border-radius:14px;background:${STATUS[st].tint}"><span class="s14" style="color:${STATUS[st].color};line-height:1.45">${msg}</span></div>
+
+    <h3 class="s15 b6" style="margin:20px 0 6px">Your limit</h3>
+    <p class="s13 muted" style="margin:0;line-height:1.5">${esc(l.basis || '')}</p>
+    <h3 class="s15 b6" style="margin:16px 0 6px">Why limit it</h3>
+    <p class="s13 muted" style="margin:0;line-height:1.5">${esc(l.risk || INFO[key]?.fn || '')}</p>
+    ${l.low ? `<h3 class="s15 b6" style="margin:16px 0 6px">How low to go</h3><p class="s13 muted" style="margin:0;line-height:1.5">${esc(l.low)}</p>` : ''}
+    ${INFO[key]?.src ? `<p class="s13" style="margin:10px 0 0;line-height:1.5"><span class="muted">Usually comes from:</span> ${esc(INFO[key].src)}</p>` : ''}
+
+    <h3 class="s15 b6" style="margin:22px 0 2px">Days over (${over.length} of ${a.n})</h3>
+    <p class="small muted" style="margin:0 0 4px">Tap a day for the foods behind it.</p>
+    <div class="list">${over.length ? over.map((d, i) => dayBlock(d, i === 0)).join('') : '<div class="s13 muted" style="padding:10px 0">None in this period.</div>'}</div>
+    ${under.length ? `<details class="mt12"><summary class="s14 b6" style="color:var(--lilac);padding:8px 0">Days under the limit (${under.length})</summary><div class="list">${under.map((d) => dayBlock(d, false)).join('')}</div></details>` : ''}
+
+    ${top.length ? `<h3 class="s15 b6" style="margin:22px 0 6px">Biggest sources, ${rangeName}</h3>
+    <div class="list">${top.map((f) => `<div class="spread s13" style="gap:10px;padding:9px 0"><span class="ellipsis" style="min-width:0;flex:1">${esc(f.food.name)}</span><span class="muted" style="flex:none">${fmt(f.v / (a.n || 1), unit)} a day · ${pct(f.share)}</span></div>`).join('')}</div>` : ''}
+    ${a.partial.length ? `<p class="small faint" style="margin:14px 0 0;line-height:1.45">Days that look only partly logged are left out (${a.partial.length}).</p>` : ''}`;
 }

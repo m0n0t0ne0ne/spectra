@@ -6,7 +6,7 @@ import { lookupBarcode, foodFromSearchHit } from './pipeline.js';
 import { startScanner, stopScanner, decodeImageFile } from './scanner.js';
 import { parseLocal, detectBasis, firstUrl, servingFromText } from './paste.js';
 import { foodTile, foodKind, FOOD_KINDS } from './foodicon.js';
-import { insightsHTML } from './insights.js';
+import { insightsHTML, limitDetailHTML } from './insights.js';
 import { geminiNutrientPrompt } from './prompts.js';
 import { INFO, MACRO_KEYS, ulFor, DRI_NAME, describePerson, lifeStageCalories } from './nutrient-info.js';
 
@@ -18,7 +18,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 const view = () => $('#main');
 // Inside the Android app the native layer provides AndroidBridge (Google barcode scanner, file saving).
 const NATIVE = typeof window.AndroidBridge !== 'undefined';
-const APP_VERSION = '1.0.5';
+const APP_VERSION = '1.0.6';
 const SITE = 'https://m0n0t0ne0ne.github.io/spectra/';
 const appVersion = () => { try { return (NATIVE && window.AndroidBridge.appVersion?.()) || APP_VERSION; } catch { return APP_VERSION; } };
 // Text shared to the app (Gemini's answer → Share → Spectra) opens the paste sheet for the food you asked about.
@@ -1737,6 +1737,19 @@ function openKindPicker(food) {
   scrim.addEventListener('click', (e) => { if (e.target === scrim || e.target.closest('[data-act=kind-close]')) scrim.remove(); });
 }
 
+// A limit on Insights: how it's set, why it matters, the days you went over and the foods behind each.
+function openLimit(key) {
+  const range = ['7', '30', '90', 'all'].includes(store.settings().insRange) ? store.settings().insRange : '30';
+  const html = limitDetailHTML(range, key);
+  if (!html) return;
+  document.getElementById('lim-scrim')?.remove();
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim'; scrim.id = 'lim-scrim';
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="lim-title">${html}</div>`;
+  document.body.appendChild(scrim);
+  scrim.addEventListener('click', (e) => { if (e.target === scrim) scrim.remove(); });
+}
+
 // Breakdown of calories burned, opened by tapping "Burned" on the Diary.
 function openBurned(date) {
   const entries = store.day(date);
@@ -2222,6 +2235,8 @@ document.addEventListener('click', async (ev) => {
     case 'dm-delete': await dmDelete(); break;
     case 'ins-range': store.saveSettings({ insRange: el.dataset.v }); render(); break;
     case 'ins-all': ui.insAll = !ui.insAll; render(); break;
+    case 'ins-limit': openLimit(el.dataset.k); break;
+    case 'lim-close': document.getElementById('lim-scrim')?.remove(); break;
     case 'ins-jump': {
       const id = el.dataset.to;
       let t = document.getElementById(id);

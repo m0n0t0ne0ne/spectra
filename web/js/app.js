@@ -18,7 +18,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 const view = () => $('#main');
 // Inside the Android app the native layer provides AndroidBridge (Google barcode scanner, file saving).
 const NATIVE = typeof window.AndroidBridge !== 'undefined';
-const APP_VERSION = '1.0.7';
+const APP_VERSION = '1.0.8';
 const SITE = 'https://m0n0t0ne0ne.github.io/spectra/';
 const appVersion = () => { try { return (NATIVE && window.AndroidBridge.appVersion?.()) || APP_VERSION; } catch { return APP_VERSION; } };
 // Text shared to the app (Gemini's answer → Share → Spectra) opens the paste sheet for the food you asked about.
@@ -494,25 +494,26 @@ function trendPage(date) {
 
 // One plain sentence tying burned, balance and target together, against the deficit or surplus you planned
 // (your target minus what you burn). E.g. "117 kcal deficit so far — 383 short of your 500 kcal plan."
-function planLine(en, et) {
+function planLine(en, et, date = todayISO()) {
+  const day = date === todayISO() ? 'today' : 'that day';
   if (!en.ready || !et.total) return '';
   const planned = Math.round(et.total - en.burned);
   const bal = Math.round(en.balance);
   const n = (v) => fmt(Math.abs(v));
   let text, color = 'var(--text-2)';
   if (Math.abs(planned) < 50) {
-    text = bal > 50 ? `You’ve eaten ${n(bal)} kcal more than you burned today. Your target keeps you at maintenance.`
-      : bal < 0 ? `You’re ${n(bal)} kcal under what you burned today. Your target keeps you at maintenance.`
-      : 'You’re right at maintenance today.';
+    text = bal > 50 ? `You’ve eaten ${n(bal)} kcal more than you burned ${day}. Your target keeps you at maintenance.`
+      : bal < 0 ? `You’re ${n(bal)} kcal under what you burned ${day}. Your target keeps you at maintenance.`
+      : `You’re right at maintenance ${day}.`;
   } else if (planned < 0) {
     const need = -planned, have = -bal;
     if (bal >= 0) { text = `No deficit yet: you’ve eaten ${n(bal)} kcal more than you burned. Your plan is a ${n(need)} kcal deficit.`; color = 'var(--rose)'; }
-    else if (have >= need) { text = `${n(have)} kcal deficit today — your ${n(need)} kcal plan is met${have - need >= 10 ? `, with ${n(have - need)} to spare` : ''}.`; color = 'var(--lilac)'; }
-    else { text = `${n(have)} kcal deficit today — ${n(need - have)} short of your ${n(need)} kcal deficit plan.`; color = 'var(--wheat)'; }
+    else if (have >= need) { text = `${n(have)} kcal deficit ${day} — your ${n(need)} kcal plan is met${have - need >= 10 ? `, with ${n(have - need)} to spare` : ''}.`; color = 'var(--lilac)'; }
+    else { text = `${n(have)} kcal deficit ${day} — ${n(need - have)} short of your ${n(need)} kcal deficit plan.`; color = 'var(--wheat)'; }
   } else {
     const need = planned;
-    if (bal >= need) { text = `${n(bal)} kcal surplus today — your ${n(need)} kcal plan is met.`; color = 'var(--lilac)'; }
-    else { text = `${bal > 0 ? `${n(bal)} kcal surplus` : 'No surplus'} today — ${n(need - Math.max(0, bal))} short of your ${n(need)} kcal surplus plan.`; color = 'var(--wheat)'; }
+    if (bal >= need) { text = `${n(bal)} kcal surplus ${day} — your ${n(need)} kcal plan is met.`; color = 'var(--lilac)'; }
+    else { text = `${bal > 0 ? `${n(bal)} kcal surplus` : 'No surplus'} ${day} — ${n(need - Math.max(0, bal))} short of your ${n(need)} kcal surplus plan.`; color = 'var(--wheat)'; }
   }
   return `<p class="s13 mt12" style="margin-bottom:0;line-height:1.45;color:${color}">${text}</p>`;
 }
@@ -555,9 +556,14 @@ function summaryPages(tot, entries, date) {
         ? `<button class="col" data-act="burned" data-date="${date}" aria-label="Calories burned: ${fmt(Math.round(en.burned))}. Show breakdown" style="gap:2px;align-items:flex-start;border:none;background:none;padding:0;text-align:left;cursor:pointer"><span class="small muted row" style="gap:3px">Burned <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span><span class="b6" style="font-size:17px">${fmt(Math.round(en.burned))}</span></button>`
         : `<a class="col" href="#/settings" style="gap:2px"><span class="small muted">Burned</span><span class="b6" style="font-size:15px;color:var(--lilac);line-height:1.55">Set up</span></a>`}
       <div class="col" style="gap:2px"><span class="small muted">${en.ready ? BALANCE[balanceStatus(en.balance)].label : 'Balance'}</span><span class="b6" style="font-size:17px;color:${en.ready ? BALANCE[balanceStatus(en.balance)].color : balColor}">${en.ready ? (en.balance > 0 ? '+' : '−') + fmt(Math.abs(Math.round(en.balance))) : '—'}</span></div>
-      <div class="col" style="gap:2px"><span class="small muted">${diff > 0 ? 'Over target' : 'Left to eat'}</span><span class="b6" style="font-size:17px;color:${diff > 0 ? 'var(--rose)' : 'var(--text)'}">${fmt(Math.abs(Math.round(diff)))}</span></div>
+      ${en.ready && diff === Math.round(en.balance) ? (() => {
+        // Target equals what you burned (Maintain, set from your goal): "over target" would repeat the surplus, so show protein instead.
+        const pv = tot.protein?.v || 0, pt = store.target('protein');
+        return pt ? `<div class="col" style="gap:2px"><span class="small muted">${pv >= pt ? 'Protein' : 'Protein left'}</span><span class="b6" style="font-size:17px;color:${pv >= pt ? 'var(--lilac)' : 'var(--text)'}">${pv >= pt ? `${fmt(Math.round(pv))} / ${fmt(pt)} g` : `${fmt(Math.round(pt - pv))} g`}</span></div>`
+          : `<div class="col" style="gap:2px"><span class="small muted">Protein</span><span class="b6" style="font-size:17px">${fmt(Math.round(pv))} g</span></div>`;
+      })() : `<div class="col" style="gap:2px"><span class="small muted">${diff > 0 ? 'Over target' : 'Left to eat'}</span><span class="b6" style="font-size:17px;color:${diff > 0 ? 'var(--rose)' : 'var(--text)'}">${fmt(Math.abs(Math.round(diff)))}</span></div>`}
     </div>
-    ${planLine(en, et)}
+    ${planLine(en, et, date)}
     `;
 
   const macros = MACROS.map((m) => {
@@ -1758,6 +1764,9 @@ function openBurned(date) {
   if (!en.ready) return;
   const p = store.profile();
   const acts = store.activities(date);
+  // Which weigh-in this day's BMR (and a goal-based target) comes from.
+  const w = store.weightOn(date);
+  const wNote = w ? `BMR uses your ${w.lbs.toFixed(1)} lb weigh-in ${w.date === date ? 'from this day' : `from ${longDate(w.date)}, the latest one before this day`}.` : '';
   const parts = [
     { label: 'Resting (BMR)', v: en.bmr, color: 'var(--text-2)' },
     { label: `Daily activity · ${activityName(p)}`, v: en.baseline, color: 'var(--sky)' },
@@ -1770,6 +1779,7 @@ function openBurned(date) {
   scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="burn-title"><div class="handle"></div>
     <div class="spread"><h2 class="h2" id="burn-title">Calories burned</h2><button class="icon-btn ghost" data-act="burn-close" aria-label="Close">${I.close}</button></div>
     <div class="row mt12" style="gap:8px;align-items:baseline"><span style="font-size:44px;font-weight:300;letter-spacing:-.03em;line-height:1">${fmt(Math.round(en.burned))}</span><span class="s15 muted">kcal ${date === todayISO() ? 'today' : 'on ' + longDate(date)}</span></div>
+    ${wNote ? `<p class="small muted" style="margin:8px 0 0;line-height:1.45">${esc(wNote)}</p>` : ''}
     <div class="stack mt16" style="height:10px;border-radius:5px" aria-hidden="true">${parts.filter((x) => x.v > 0).map((x) => `<span style="flex:${x.v};background:${x.color}"></span>`).join('')}</div>
     <div class="list mt12">${parts.map((x) => `<div class="spread s14" style="padding:12px 0"><span class="row" style="gap:10px"><span class="dot" style="background:${x.color};width:8px;height:8px"></span>${esc(x.label)}</span><span class="b6">${fmt(Math.round(x.v))}</span></div>`).join('')}
       ${acts.map((a) => `<div class="spread small muted" style="padding:6px 0 6px 18px;border:none"><span>${esc(a.name)}${a.minutes ? ' · ' + fmt(Number(a.minutes)) + ' min' : ''}</span><span>${fmt(Math.round(Number(a.kcal) || 0))}</span></div>`).join('')}

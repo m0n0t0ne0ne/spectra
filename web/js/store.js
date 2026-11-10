@@ -438,7 +438,8 @@ export function dayEnergy(date, consumedKcal = 0) {
 // Today's calorie target: your target plus the calories from workouts you logged that day,
 // so exercising raises what you can eat and the deficit or surplus you planned stays the same.
 export function energyTargetFor(date = todayISO()) {
-  const base = store.target('energy') || 0;
+  // A target set from your weight goal follows that day's weight, the same weight its calories burned use.
+  const base = autoEnergyTarget(date) ?? (store.target('energy') || 0);
   const activities = store.activities(date).reduce((a, x) => a + (Number(x.kcal) || 0), 0);
   const adds = store.settings().workoutsInTarget !== false;
   return { base, activities: adds ? activities : 0, total: base + (adds ? activities : 0), adds };

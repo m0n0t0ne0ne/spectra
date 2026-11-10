@@ -18,7 +18,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 const view = () => $('#main');
 // Inside the Android app the native layer provides AndroidBridge (Google barcode scanner, file saving).
 const NATIVE = typeof window.AndroidBridge !== 'undefined';
-const APP_VERSION = '1.0.6';
+const APP_VERSION = '1.0.7';
 const SITE = 'https://m0n0t0ne0ne.github.io/spectra/';
 const appVersion = () => { try { return (NATIVE && window.AndroidBridge.appVersion?.()) || APP_VERSION; } catch { return APP_VERSION; } };
 // Text shared to the app (Gemini's answer → Share → Spectra) opens the paste sheet for the food you asked about.
@@ -537,7 +537,7 @@ function summaryPages(tot, entries, date) {
   const energy = `
     <div class="col" style="gap:2px">
       <span class="row" style="gap:8px;align-items:baseline"><span style="font-size:52px;font-weight:300;letter-spacing:-.03em;line-height:1">${fmt(eaten)}</span><span class="s15 muted">kcal</span></span>
-      <span class="s14 muted">eaten of today’s ${fmt(Math.round(eTarget))} kcal target</span>
+      <span class="s14 muted">eaten of ${date === todayISO() ? 'today’s' : 'the day’s'} ${fmt(Math.round(eTarget))} kcal target</span>
       ${et.activities > 0 ? `<span class="small faint">${fmt(Math.round(et.base))} target + ${fmt(Math.round(et.activities))} from workouts</span>` : ''}
     </div>
     <div style="position:relative;padding-top:18px" class="mt16">

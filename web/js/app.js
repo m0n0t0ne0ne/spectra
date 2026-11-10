@@ -1,4 +1,4 @@
-import { NUTRIENTS, BY_KEY, GROUPS, fmt, deriveTotals } from './nutrients.js';
+import { NUTRIENTS, BY_KEY, GROUPS, RARELY_MEASURED, fmt, deriveTotals } from './nutrients.js';
 import { storageUsage, exportData, importPreview, importData, dataBreakdown, deleteDiaryMonths, deleteBodyMonths, deleteFoods } from './store.js';
 import { store, sortMeal, energyTargetFor, totals, coverage, todayISO, ACTIVITY_LEVELS, ACTIVITY_TYPES, activityKcalFor, activityName, bmrFor, dayEnergy, activityKcal } from './store.js';
 import { fdcSearch, isPlaceholderServing } from './api.js';
@@ -18,7 +18,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 const view = () => $('#main');
 // Inside the Android app the native layer provides AndroidBridge (Google barcode scanner, file saving).
 const NATIVE = typeof window.AndroidBridge !== 'undefined';
-const APP_VERSION = '1.0.8';
+const APP_VERSION = '1.0.9';
 const SITE = 'https://m0n0t0ne0ne.github.io/spectra/';
 const appVersion = () => { try { return (NATIVE && window.AndroidBridge.appVersion?.()) || APP_VERSION; } catch { return APP_VERSION; } };
 // Text shared to the app (Gemini's answer → Share → Spectra) opens the paste sheet for the food you asked about.
@@ -578,25 +578,149 @@ function summaryPages(tot, entries, date) {
     </div>`;
   }).join('');
 
-  const cov = coverage(tot);
+  const nutrients = nutrientsPage(date, tot, entries, eTarget);
+  return [energy, `<div class="col" style="gap:16px">${macros}</div>`, nutrients, trendPage(date)];
+}
+
+/* ---------------- Diary: Nutrients page ---------------- */
+
+// Not scored: fluoride comes from water and toothpaste, and omega-6 is judged by its ratio to omega-3.
+const DAY_SKIP = ['energy', 'water', 'carbs', 'fluoride', 'omega6', 'la', 'ala'];
+
+// Today's limits, set the same way as on Insights but from the day's calorie target.
+function dayLimits(tot, kcal) {
+  const k = kcal || 2000;
+  return [
+    { key: 'sodium', name: 'Sodium', unit: 'mg', limit: 2300 },
+    { key: 'sat_fat', name: 'Sat fat', unit: 'g', limit: Math.round(Math.max(10, (k * 0.1) / 9)) },
+    { key: 'added_sugars', name: 'Added sugar', unit: 'g', limit: Math.round(Math.min(store.target('added_sugars') || 50, Math.max(25, (k * 0.1) / 4))) }
+  ].map((l) => ({ ...l, v: tot[l.key]?.v || 0 }));
+}
+
+// How much of the day's food (by calories) lists a nutrient. Low means the total is missing data, not a real gap.
+function dayCoverage(entries) {
+  const foods = store.foods();
+  const covered = {}; let all = 0;
+  for (const e of entries) {
+    const f = foods[e.foodId]; if (!f) continue;
+    const kc = Math.max(1, ((f.per100?.energy?.v || 0) * e.grams) / 100);
+    all += kc;
+    for (const [key, c] of Object.entries(f.per100 || {})) if (c?.v != null) covered[key] = (covered[key] || 0) + kc;
+  }
+  return (key) => (all ? Math.min(1, (covered[key] || 0) / all) : 0);
+}
+
+// The food you already eat that closes a gap best: your usual portion, fewest calories for the job.
+function quickFix(key, short) {
+  const foods = store.foods();
+  const usual = {};
+  for (const list of Object.values(store.log())) for (const e of list) { const u = (usual[e.foodId] = usual[e.foodId] || { g: 0, c: 0 }); u.g += e.grams; u.c++; }
+  let best = null;
+  for (const [id, u] of Object.entries(usual)) {
+    const f = foods[id]; const per = f?.per100?.[key]?.v; if (!per) continue;
+    const g = u.g / u.c, v = (per * g) / 100; if (v <= 0) continue;
+    const kc = ((f.per100.energy?.v || 0) * g) / 100;
+    // Skip foods heavy in sodium, added sugar or saturated fat for their calories, as Insights does.
+    const k100 = f.per100.energy?.v || 0, val = (x) => f.per100[x]?.v || 0;
+    if (k100 > 0 && (val('sodium') / k100 > 0.9 || (val('added_sugars') * 4) / k100 > 0.2 || (val('sat_fat') * 9) / k100 > 0.12)) continue;
+    // A token amount isn't a fix.
+    if (v < Math.min(short, (store.target(key) || short) * 0.15)) continue;
+    // Enough to close the gap beats not enough; then fewer calories; then more of the nutrient.
+    const score = (v >= short ? 1e6 : 0) + (v >= short ? -kc : v / (kc + 50) * 1000);
+    if (!best || score > best.score) best = { f, g, v, kc, score, times: u.c };
+  }
+  if (!best) { const src = INFO[key]?.src; return src ? `Try ${src.replace(/\.$/, '').split(/,\s*/).slice(0, 3).join(', ').toLowerCase()}` : ''; }
+  const unit = BY_KEY[key].unit;
+  const portion = `${fmt(Math.round(best.g))} g`;
+  return best.v >= short ? `${portion} ${best.f.name} would cover it` : `${portion} ${best.f.name} adds ${fmt(best.v, unit)}`;
+}
+
+function nutrientsPage(date, tot, entries, kcalTarget) {
+  const covOf = dayCoverage(entries);
+  const keys = NUTRIENTS.filter((n) => !n.limit && store.target(n.key) && n.group !== 'General' && !DAY_SKIP.includes(n.key) && (n.group !== 'Protein' || n.key === 'protein'));
+  const rows = keys.map((n) => {
+    const t = store.target(n.key), v = tot[n.key]?.v || 0;
+    const cov = covOf(n.key);
+    // Missing data: most of the day's food doesn't list it, so a low total says nothing.
+    // Labels rarely list some nutrients (chromium, iodine…); for the rest, only when almost nothing lists it.
+    const thin = v / t < 1 && (RARELY_MEASURED.includes(n.key) ? cov < 0.5 : cov < 0.25);
+    return { n, t, v, p: v / t, thin };
+  });
+  const scored = rows.filter((r) => !r.thin);
+  const score = scored.length ? scored.reduce((a, r) => a + Math.min(1, r.p), 0) / scored.length : 0;
+  const met = scored.filter((r) => r.p >= 1).length;
   const withData = Object.values(tot).filter((t) => t.v > 0);
   const estShare = withData.length ? withData.reduce((a, t) => a + t.estShare, 0) / withData.length : 0;
-  const lows = NUTRIENTS.filter((n) => !n.limit && store.target(n.key) && n.group !== 'General')
-    .map((n) => ({ n, p: (tot[n.key]?.v || 0) / store.target(n.key) })).filter((x) => x.p < 1)
-    .sort((a, b) => a.p - b.p).slice(0, 3);
-  const nutrients = `
+  const lows = scored.filter((r) => r.p < 1).sort((a, b) => a.p - b.p).slice(0, 3);
+  const thin = rows.filter((r) => r.thin);
+  const lim = dayLimits(tot, kcalTarget);
+  const n6 = tot.omega6?.v || 0, n3 = tot.omega3?.v || 0;
+  const ratio = n6 > 0 && n3 > 0 && covOf('omega6') >= 0.4 ? n6 / n3 : null;
+  const tone = (p) => (p > 1 ? 'var(--rose)' : p >= 0.8 ? 'var(--wheat)' : 'var(--lilac)');
+  const ratioTone = ratio == null ? 'var(--text-3)' : ratio <= 4 ? 'var(--lilac)' : ratio <= 8 ? 'var(--wheat)' : 'var(--rose)';
+  const pctS = (p) => `${Math.round(p * 100)}%`;
+  const names = (list) => list.length <= 2 ? list.join(' and ') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+  return `
     <div class="col" style="gap:2px">
-      <span class="row" style="gap:8px;align-items:baseline"><span style="font-size:52px;font-weight:300;letter-spacing:-.03em;line-height:1">${Math.round(cov * 100)}%</span><span class="s15 muted">of targets</span></span>
-      <span class="s14 muted">${withData.length} nutrients tracked · ${Math.round(estShare * 100)}% estimated</span>
+      <span class="row" style="gap:8px;align-items:baseline"><span style="font-size:52px;font-weight:300;letter-spacing:-.03em;line-height:1">${Math.round(score * 100)}%</span><span class="s15 muted">of targets</span></span>
+      <span class="s14 muted">${met} of ${scored.length} met${estShare >= 0.05 ? ` · ${Math.round(estShare * 100)}% estimated` : ''}</span>
     </div>
     <div class="col mt16" style="gap:10px">
-      <span class="small muted">${lows.length ? 'Still low today' : 'Every target met'}</span>
-      ${lows.map((l) => `<a href="#/report/${entries[0]?._date || todayISO()}" class="row" style="gap:10px">
-        <span class="s14 ellipsis" style="width:100px">${esc(l.n.name)}</span>
-        <span class="bar" style="flex:1;height:6px" aria-hidden="true"><span style="width:${Math.round(l.p * 100)}%;background:var(--lilac)"></span></span>
-        <span class="s13 muted" style="width:38px;text-align:right">${Math.round(l.p * 100)}%</span></a>`).join('')}
-    </div>`;
-  return [energy, `<div class="col" style="gap:16px">${macros}</div>`, nutrients, trendPage(date)];
+      <span class="small muted">${lows.length ? (date === todayISO() ? 'Short today' : 'Short this day') : 'Every target met'}</span>
+      ${lows.map((l) => {
+        const fix = quickFix(l.n.key, l.t - l.v);
+        return `<a href="#/report/${date}" class="col" style="gap:4px">
+        <span class="row" style="gap:10px"><span class="s14 ellipsis" style="width:104px">${esc(l.n.name.replace(/ \(.*\)$/, ''))}</span>
+        <span class="bar" style="flex:1;height:6px" aria-hidden="true"><span style="width:${Math.min(100, Math.round(l.p * 100))}%;background:${l.p < 0.7 ? 'var(--rose)' : 'var(--wheat)'}"></span></span>
+        <span class="s13 muted" style="width:38px;text-align:right">${pctS(l.p)}</span></span>
+        ${fix ? `<span class="small muted ellipsis" style="padding-left:114px">${esc(fix)}</span>` : ''}</a>`;
+      }).join('')}
+    </div>
+    <div class="col mt16" style="gap:8px">
+      <span class="small muted">${date === todayISO() ? 'Watch today' : 'Watch'}</span>
+      <div class="day-watch">${lim.map((l) => `<button class="day-w" data-act="day-limit" data-k="${l.key}" data-date="${date}" aria-label="${l.name}: ${fmt(l.v)} of ${fmt(l.limit)} ${l.unit}. Show foods">
+        <span class="small muted">${l.name}</span><span class="s14 b6" style="color:${tone(l.v / l.limit)}">${fmt(l.v)}<span class="small muted" style="font-weight:400"> / ${fmt(l.limit)} ${l.unit}</span></span>
+        <span class="bar" style="height:4px" aria-hidden="true"><span style="width:${Math.min(100, (l.v / l.limit) * 100).toFixed(1)}%;background:${tone(l.v / l.limit)}"></span></span></button>`).join('')}
+        <button class="day-w" data-act="day-limit" data-k="omega6" data-date="${date}" aria-label="Omega-6 to omega-3 ratio. Show foods"><span class="small muted">Omega-6 : 3</span><span class="s14 b6" style="color:${ratioTone}">${ratio == null ? '—' : `${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(1).replace(/\.0$/, '')} : 1`}</span><span class="small muted">${ratio == null ? 'Not enough data' : 'Aim 4 : 1 or lower'}</span></button>
+      </div>
+    </div>
+    ${thin.length ? `<p class="small faint" style="margin:12px 0 0;line-height:1.45">${esc(thin.length > 3 ? `${thin.slice(0, 3).map((r) => r.n.name.replace(/ \(.*\)$/, '')).join(', ')} and ${thin.length - 3} more` : names(thin.map((r) => r.n.name.replace(/ \(.*\)$/, ''))))} ${thin.length === 1 ? 'isn’t' : 'aren’t'} listed on most of ${date === todayISO() ? 'today’s' : 'this day’s'} foods, so ${thin.length === 1 ? 'it’s' : 'they’re'} left out. Fluoride (from water) and omega-6 (judged by its ratio) aren’t scored.</p>`
+      : `<p class="small faint" style="margin:12px 0 0;line-height:1.45">Fluoride (from water) and omega-6 (judged by its ratio) aren’t scored.</p>`}`;
+}
+
+// One limit for one day: the total against the limit and the foods behind it.
+function openDayLimit(date, key) {
+  const entries = store.day(date);
+  const tot = totals(entries);
+  const foods = store.foods();
+  const isRatio = key === 'omega6';
+  const l = isRatio ? null : dayLimits(tot, energyTargetFor(date).total).find((x) => x.key === key);
+  const unit = BY_KEY[key].unit;
+  const list = (k) => entries.map((e) => { const f = foods[e.foodId]; const per = f?.per100?.[k]?.v; return f && per ? { f, e, v: (per * e.grams) / 100 } : null; })
+    .filter((x) => x && x.v > 0).sort((a, b) => b.v - a.v);
+  const rowsHTML = (k, total) => list(k).slice(0, 10).map((x) => `<div class="spread s13" style="gap:10px;padding:8px 0"><span class="col" style="gap:1px;min-width:0;flex:1"><span class="ellipsis">${esc(x.f.name)}</span><span class="small muted">${esc(amountText(x.e))} · ${esc(mealName(x.e.meal))}</span></span><span class="col" style="gap:1px;align-items:flex-end;flex:none"><b class="b6">${fmt(x.v, BY_KEY[k].unit)}</b><span class="small muted">${total ? Math.round((x.v / total) * 100) : 0}%</span></span></div>`).join('') || '<div class="s13 muted" style="padding:8px 0">None of this day’s foods list it.</div>';
+  let body;
+  if (isRatio) {
+    const n6 = tot.omega6?.v || 0, n3 = tot.omega3?.v || 0;
+    body = `<div class="row mt12" style="gap:8px;align-items:baseline"><span style="font-size:40px;font-weight:300;letter-spacing:-.03em;line-height:1">${n6 > 0 && n3 > 0 ? (n6 / n3).toFixed(1).replace(/\.0$/, '') + ' : 1' : '—'}</span><span class="s15 muted">omega-6 : omega-3</span></div>
+      <p class="s13 muted" style="margin:10px 0 0;line-height:1.5">${fmt(n6)} g omega-6 and ${fmt(n3)} g omega-3. Most guidance aims for 4 : 1 or lower; typical Western diets run 15 : 1 or more. More fatty fish, chia, flax or walnuts, and fewer seed oils, bring it down.</p>
+      <h3 class="s15 b6" style="margin:18px 0 4px">Omega-6 from</h3><div class="list">${rowsHTML('omega6', n6)}</div>
+      <h3 class="s15 b6" style="margin:18px 0 4px">Omega-3 from</h3><div class="list">${rowsHTML('omega3', n3)}</div>`;
+  } else {
+    const over = l.v > l.limit;
+    body = `<div class="row mt12" style="gap:8px;align-items:baseline"><span style="font-size:40px;font-weight:300;letter-spacing:-.03em;line-height:1">${fmt(l.v)}</span><span class="s15 muted">of ${fmt(l.limit)} ${unit} limit</span></div>
+      <p class="s14" style="margin:10px 0 0;color:${over ? 'var(--rose)' : 'var(--text-2)'}">${over ? `${fmt(l.v - l.limit, unit)} over` : `${fmt(l.limit - l.v, unit)} left`}${key === 'sodium' ? '' : ` · based on ${fmt(Math.round(energyTargetFor(date).total))} kcal`}</p>
+      <h3 class="s15 b6" style="margin:18px 0 4px">From</h3><div class="list">${rowsHTML(key, l.v)}</div>
+      <button class="btn quiet block mt16" data-act="day-limit-ins" data-k="${key}" style="font-weight:600">Your average over time, and why it matters</button>`;
+  }
+  document.getElementById('lim-scrim')?.remove();
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim'; scrim.id = 'lim-scrim';
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dl-title"><div class="handle"></div>
+    <div class="spread"><h2 class="h2" id="dl-title">${isRatio ? 'Omega-6 : omega-3' : esc(BY_KEY[key].name)}</h2><button class="icon-btn ghost" data-act="lim-close" aria-label="Close">${I.close}</button></div>
+    <p class="small muted" style="margin:2px 0 0">${date === todayISO() ? 'Today' : longDate(date)}</p>${body}</div>`;
+  document.body.appendChild(scrim);
+  scrim.addEventListener('click', (e) => { if (e.target === scrim) scrim.remove(); });
 }
 
 function mealCard(date, key, items, idx = 0, count = 1) {
@@ -2246,6 +2370,8 @@ document.addEventListener('click', async (ev) => {
     case 'ins-range': store.saveSettings({ insRange: el.dataset.v }); render(); break;
     case 'ins-all': ui.insAll = !ui.insAll; render(); break;
     case 'ins-limit': openLimit(el.dataset.k); break;
+    case 'day-limit': openDayLimit(el.dataset.date, el.dataset.k); break;
+    case 'day-limit-ins': document.getElementById('lim-scrim')?.remove(); openLimit(el.dataset.k); break;
     case 'lim-close': document.getElementById('lim-scrim')?.remove(); break;
     case 'ins-jump': {
       const id = el.dataset.to;

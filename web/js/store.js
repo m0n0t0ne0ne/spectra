@@ -422,11 +422,16 @@ export function bmrFor(date = todayISO()) {
   return 10 * kg + 6.25 * cm - 5 * age + (p.sex === 'female' ? -161 : 5);
 }
 
+// Calories from the workouts logged on a day.
+export function workoutKcal(date) {
+  return store.activities(date).reduce((a, x) => a + (Number(x.kcal) || 0), 0);
+}
+
 // Everything burned in a day: BMR + baseline activity level + logged activities (+ digestion if enabled).
 export function dayEnergy(date, consumedKcal = 0) {
   const p = store.profile();
   const bmr = bmrFor(date);
-  const acts = store.activities(date).reduce((a, x) => a + (Number(x.kcal) || 0), 0);
+  const acts = workoutKcal(date);
   if (bmr == null) return { ready: false, activities: acts };
   const baseline = activityKcalFor(bmr, p);
   const tef = p.tef ? consumedKcal * 0.1 : 0;
@@ -440,7 +445,7 @@ export function dayEnergy(date, consumedKcal = 0) {
 export function energyTargetFor(date = todayISO()) {
   // A target set from your weight goal follows that day's weight, the same weight its calories burned use.
   const base = autoEnergyTarget(date) ?? (store.target('energy') || 0);
-  const activities = store.activities(date).reduce((a, x) => a + (Number(x.kcal) || 0), 0);
+  const activities = workoutKcal(date);
   const adds = store.settings().workoutsInTarget !== false;
   return { base, activities: adds ? activities : 0, total: base + (adds ? activities : 0), adds };
 }

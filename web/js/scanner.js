@@ -79,24 +79,3 @@ export function stopScanner() {
   zxReader = null;
   if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
 }
-
-// Decode a still photo (fallback when live video isn't possible).
-export async function decodeImageFile(file) {
-  const detector = await nativeDetector();
-  const url = URL.createObjectURL(file);
-  try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    if (detector) {
-      const codes = await detector.detect(img);
-      if (codes[0]) return codes[0].rawValue.replace(/\D/g, '');
-    }
-    await loadScript(ZXING_URL);
-    const reader = new window.ZXing.BrowserMultiFormatReader();
-    const r = await reader.decodeFromImageElement(img);
-    return r.getText().replace(/\D/g, '');
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}

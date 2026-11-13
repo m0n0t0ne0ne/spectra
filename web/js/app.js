@@ -3,7 +3,7 @@ import { storageUsage, exportData, importPreview, importData, dataBreakdown, del
 import { store, sortMeal, energyTargetFor, totals, coverage, todayISO, ACTIVITY_LEVELS, ACTIVITY_TYPES, activityKcalFor, activityName, bmrFor, dayEnergy, activityKcal } from './store.js';
 import { fdcSearch, isPlaceholderServing } from './api.js';
 import { lookupBarcode, foodFromSearchHit } from './pipeline.js';
-import { startScanner, stopScanner, decodeImageFile } from './scanner.js';
+import { startScanner, stopScanner } from './scanner.js';
 import { parseLocal, detectBasis, firstUrl, servingFromText } from './paste.js';
 import { foodTile, foodKind, FOOD_KINDS } from './foodicon.js';
 import { insightsHTML, limitDetailHTML } from './insights.js';
@@ -18,7 +18,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 const view = () => $('#main');
 // Inside the Android app the native layer provides AndroidBridge (Google barcode scanner, file saving).
 const NATIVE = typeof window.AndroidBridge !== 'undefined';
-const APP_VERSION = '1.0.9';
+const APP_VERSION = '1.0.10';
 const SITE = 'https://m0n0t0ne0ne.github.io/spectra/';
 const appVersion = () => { try { return (NATIVE && window.AndroidBridge.appVersion?.()) || APP_VERSION; } catch { return APP_VERSION; } };
 // Text shared to the app (Gemini's answer → Share → Spectra) opens the paste sheet for the food you asked about.
@@ -2538,18 +2538,6 @@ document.addEventListener('click', async (ev) => {
     case 'cal-month': ui.cal.month = el.dataset.m; renderCalendar(); break;
     case 'cal-pick': document.getElementById('cal-scrim')?.remove(); go(`#/day/${el.dataset.d}`); break;
     case 'cal-close': document.getElementById('cal-scrim')?.remove(); break;
-    case 'quick-add': {
-      const last = store.day(el.dataset.from).find((e) => e.id === el.dataset.entry);
-      const food = store.food(el.dataset.id);
-      if (!last || !food) break;
-      const meal = el.dataset.meal;
-      store.addEntry(el.dataset.date, { foodId: food.id, grams: last.grams, unit: last.unit, qty: last.qty, meal, ts: tsFor(el.dataset.date, hhmm(Date.now())) });
-      el.innerHTML = I.check.replace(/12/g, '16');
-      el.style.background = 'var(--lilac)'; el.style.color = 'var(--on-accent)';
-      el.disabled = true;
-      toast(`Added ${food.name} to ${mealName(meal)}`);
-      break;
-    }
     case 'nut-open': go(`#/nutrient/${el.dataset.k}?date=${el.dataset.date}`); break;
     case 'burned': openBurned(el.dataset.date); break;
     case 'burn-close': document.getElementById('burn-scrim')?.remove(); break;
@@ -2676,12 +2664,6 @@ document.addEventListener('change', async (ev) => {
   if (el.dataset.act === 'qty-input') { clearTimeout(qtyTimer); ui.add.qty = Math.max(0, Number(el.value) || 0); render(); }
   if (el.dataset.act === 'paste-label' && ui.paste) { ui.paste.replaceLabel = el.checked; store.saveSettings({ pasteOverLabel: el.checked }); renderPaste(); return; }
   if (el.dataset.act === 'time') { ui.add.time = el.value || ui.add.time; if (ui.add.entryId) render(); }
-  if (el.dataset.act === 'photo' && el.files?.[0]) {
-    const msg = $('#scan-msg');
-    if (msg) msg.textContent = 'Reading the photo…';
-    try { const code = await decodeImageFile(el.files[0]); runLookup(code); }
-    catch { if (msg) msg.textContent = 'No barcode found in that photo. Try again closer, or type the number.'; }
-  }
   if (el.dataset.act === 'custom-toggle') { store.setCustomOn(el.dataset.k, el.checked); render(); return; }
   if (el.id === 'nut-target-in') { el.closest('form')?.requestSubmit(); return; }
   if (el.dataset.target) { store.setTarget(el.dataset.target, el.value); render(); }

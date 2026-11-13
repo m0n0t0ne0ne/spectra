@@ -1,6 +1,6 @@
 // Insights: what all of your logged days add up to — where your weight is heading and how fast, how well you
 // keep to your goal, which nutrients you're short on or over, and what to eat more or less of to fix it.
-import { store, totals, dayEnergy, todayISO, autoEnergyTarget, bmrFor } from './store.js';
+import { store, totals, dayEnergy, todayISO, bmrFor, energyTargetFor } from './store.js';
 import { NUTRIENTS, RARELY_MEASURED, fmt } from './nutrients.js';
 import { INFO, ulFor } from './nutrient-info.js';
 
@@ -29,14 +29,6 @@ const wday = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, 
 function badge(st, text) {
   const s = STATUS[st];
   return `<span class="ins-badge" style="color:${s.color};background:${s.tint}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${s.icon}</svg>${esc(text || s.label)}</span>`;
-}
-
-// The calorie target that applied on a given day (goal-based when auto target is on, plus that day's workouts).
-function targetOn(date) {
-  const p = store.profile();
-  const base = (p.autoTarget ? autoEnergyTarget(date) : null) ?? (store.target('energy') || 0);
-  const acts = store.activities(date).reduce((a, x) => a + (Number(x.kcal) || 0), 0);
-  return base + (store.settings().workoutsInTarget !== false ? acts : 0);
 }
 
 function goalInfo() {
@@ -69,7 +61,7 @@ export function analyze(range) {
     const tot = totals(entries);
     const eaten = tot.energy?.v || 0;
     const en = dayEnergy(d, eaten);
-    const target = targetOn(d);
+    const target = energyTargetFor(d).total;
     const row = { date: d, logged: true, entries, tot, eaten, target, burned: en.ready ? en.burned : null };
     row.balance = row.burned != null ? eaten - row.burned : null;
     // A day far under target was probably not fully logged; it would skew every average.

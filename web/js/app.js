@@ -18,7 +18,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 const view = () => $('#main');
 // Inside the Android app the native layer provides AndroidBridge (Google barcode scanner, file saving).
 const NATIVE = typeof window.AndroidBridge !== 'undefined';
-const APP_VERSION = '1.0.10';
+const APP_VERSION = '1.0.11';
 const SITE = 'https://m0n0t0ne0ne.github.io/spectra/';
 const appVersion = () => { try { return (NATIVE && window.AndroidBridge.appVersion?.()) || APP_VERSION; } catch { return APP_VERSION; } };
 // Text shared to the app (Gemini's answer → Share → Spectra) opens the paste sheet for the food you asked about.
@@ -407,10 +407,11 @@ function addDays(iso, n) {
 function trendData(date, range) {
   const n = range === 'month' ? 30 : 7;
   const target = store.target('energy') || 0;
+  const foods = store.foods(), log = store.log();
   return Array.from({ length: n }, (_, i) => {
     const d = addDays(date, i - (n - 1));
-    const entries = store.day(d);
-    const eaten = entries.length ? totals(entries).energy?.v || 0 : null;
+    const entries = log[d] || [];
+    const eaten = entries.length ? totals(entries, foods).energy?.v || 0 : null;
     const en = dayEnergy(d, eaten || 0);
     const ref = en.ready ? en.burned : target || null; // burned when BMR is set up, else the target
     const balance = eaten != null && ref ? eaten - ref : null;

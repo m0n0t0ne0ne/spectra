@@ -23,8 +23,11 @@ export const RANGES = [['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['
 
 function addDays(iso, n) { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return todayISO(d); }
 function daysBetween(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000); }
-const short = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-const wday = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short' });
+// One formatter each, reused: creating one per call made Insights slow to draw.
+const SHORT_FMT = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+const WDAY_FMT = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
+const short = (iso) => SHORT_FMT.format(new Date(iso + 'T12:00:00'));
+const wday = (iso) => WDAY_FMT.format(new Date(iso + 'T12:00:00'));
 
 function badge(st, text) {
   const s = STATUS[st];
@@ -54,11 +57,12 @@ export function analyze(range) {
   const spanDays = daysBetween(start, end) + 1;
   const goal = goalInfo();
 
+  const foodsById = store.foods();
   const days = [];
   for (let d = start; d <= end; d = addDays(d, 1)) {
     const entries = log[d] || [];
     if (!entries.length) { days.push({ date: d, logged: false }); continue; }
-    const tot = totals(entries);
+    const tot = totals(entries, foodsById);
     const eaten = tot.energy?.v || 0;
     const en = dayEnergy(d, eaten);
     const target = energyTargetFor(d).total;
@@ -125,9 +129,8 @@ export function analyze(range) {
 
   // Everything eaten in the period, summed
   const allEntries = use.flatMap((d) => d.entries);
-  const sum = totals(allEntries);
+  const sum = totals(allEntries, foodsById);
   const avgOf = (k) => (sum[k]?.v || 0) / (n || 1);
-  const foodsById = store.foods();
   // How much of what you ate has a value for each nutrient (by calories, or by item for zero-calorie foods).
   const covered = {}; let kcalAll = 0, items = 0;
   for (const e of allEntries) {

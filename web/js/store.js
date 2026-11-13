@@ -26,6 +26,7 @@ function rawGet(key) {
   mem[key] = s;
   return s;
 }
+let foodCache = { raw: undefined, map: {} };
 function read(key, fallback) {
   try { const raw = rawGet(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
 }
@@ -219,7 +220,14 @@ export const store = {
   },
 
   foods() { return read(K.foods, {}); },
-  food(id) { return this.foods()[id] || null; },
+  // One food, parsed from a cached copy of the library: parsing the whole library for every
+  // food made screens that list many foods slow. Returns a copy, so callers can change it freely.
+  food(id) {
+    const raw = rawGet(K.foods);
+    if (raw !== foodCache.raw) { try { foodCache = { raw, map: raw ? JSON.parse(raw) : {} }; } catch { foodCache = { raw, map: {} }; } }
+    const f = foodCache.map[id];
+    return f ? JSON.parse(JSON.stringify(f)) : null;
+  },
   saveFood(food) { const all = this.foods(); all[food.id] = { ...food, savedAt: Date.now() }; write(K.foods, all); return all[food.id]; },
   recentFoods(limit = 20) {
     return Object.values(this.foods()).sort((a, b) => (b.usedAt || b.savedAt || 0) - (a.usedAt || a.savedAt || 0)).slice(0, limit);
@@ -350,10 +358,11 @@ export function sortMeal(items) {
 }
 
 // Totals for a list of entries. Returns { key: { v, est } } where est is the estimated share of v.
-export function totals(entries) {
+// Pass foods (store.foods()) when calling this for many days, so the library is read only once.
+export function totals(entries, foods = store.foods()) {
   const out = {};
   for (const e of entries) {
-    const f = store.food(e.foodId);
+    const f = foods[e.foodId];
     if (!f) continue;
     const k = e.grams / 100;
     for (const [key, cell] of Object.entries(f.per100 || {})) {

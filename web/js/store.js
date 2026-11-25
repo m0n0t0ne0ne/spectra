@@ -472,7 +472,8 @@ export function autoEnergyTarget(date = todayISO()) {
 
 // Calories for an activity from its MET value: MET × kg × hours.
 export const ACTIVITY_TYPES = [
-  { name: 'Walking', met: 3.5 }, { name: 'Brisk walking', met: 4.8 }, { name: 'Running', met: 9.8 },
+  // Weightlifting: Compendium 02054, a typical gym session (multiple exercises, 8-15 reps, rest between sets).
+  { name: 'Weightlifting', met: 3.5 }, { name: 'Walking', met: 3.5 }, { name: 'Brisk walking', met: 4.8 }, { name: 'Running', met: 9.8 },
   { name: 'Cycling', met: 7.5 }, { name: 'Strength training', met: 5.0 }, { name: 'HIIT', met: 8.0 },
   { name: 'Swimming', met: 7.0 }, { name: 'Hiking', met: 6.0 }, { name: 'Yoga', met: 2.5 },
   { name: 'Pilates', met: 3.0 }, { name: 'Elliptical', met: 5.0 }, { name: 'Rowing', met: 7.0 },
